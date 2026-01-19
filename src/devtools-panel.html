@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playwright Inspector Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --secondary: #64748b;
+            --bg: #f8fafc;
+            --panel-bg: white;
+            --border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --success: #10b981;
+            --success-bg: #ecfdf5;
+            --code-bg: #0f172a;
+            --glass-border: rgba(255, 255, 255, 0.3);
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+
+        /* Nav Tabs */
+        .nav-header {
+            background: white;
+            border-bottom: 1px solid var(--border);
+            padding: 0 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 20px;
+        }
+
+        .tab {
+            padding: 14px 4px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tab:hover {
+            color: var(--primary);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Main Layout */
+        .main-content {
+            padding: 16px;
+            max-width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Hero Selection */
+        .hero-card {
+            background: linear-gradient(135deg, white 0%, #f5f3ff 100%);
+            border: 1px solid var(--primary);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow-md);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .hero-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .hero-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: var(--text-main);
+            word-break: break-all;
+            background: rgba(255, 255, 255, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px dashed var(--primary);
+        }
+
+        /* Buttons & Controls */
+        .btn {
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border-color: var(--border);
+        }
+
+        .btn-ghost:hover {
+            background: #f1f5f9;
+            color: var(--text-main);
+        }
+
+        /* Cards and Lists */
+        .section-box {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .section-title {
+            padding: 12px 16px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--secondary);
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .locator-row {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .locator-row:last-child {
+            border-bottom: none;
+        }
+
+        .locator-type {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            width: 100px;
+            flex-shrink: 0;
+        }
+
+        .locator-val {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .copy-btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f5f9;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Footer Status */
+        .page-footer {
+            padding: 10px 16px;
+            border-top: 1px solid var(--border);
+            background: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--success-bg);
+            color: var(--success);
+            padding: 2px 8px;
+            border-radius: 99px;
+            font-weight: 600;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .animate {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .code-area {
+            background: var(--code-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 8px;
+        }
+
+        .lang-switch {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .lang-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            padding: 4px 10px;
+            border-radius: 6px;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .lang-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .copy-toast {
+            position: fixed;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1e293b;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 99px;
+            font-size: 12px;
+            font-weight: 600;
+            transition: transform 0.3s;
+            z-index: 3000;
+        }
+
+        .copy-toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="nav-header">
+        <div class="tabs">
+            <div class="tab active" id="tabLive"><span>🎯</span> Live Inspect</div>
+            <div class="tab" id="tabPaste"><span>📋</span> Paste DOM</div>
+        </div>
+        <div class="header-actions">
+            <button id="settingsBtn" class="copy-btn" title="Settings">⚙️</button>
+            <button id="clearBtn" class="copy-btn" title="Clear All">🧹</button>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <!-- Live Inspect View -->
+        <div id="viewLive" class="view-content">
+            <button id="toggleInspect" class="btn btn-primary" style="width: 100%; padding: 14px;">🎯 Start Inspecting
+                Page</button>
+        </div>
+
+        <!-- Paste DOM View -->
+        <div id="viewPaste" class="view-content hidden">
+            <div class="section-box" style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <textarea id="domPasteArea" placeholder="Paste HTML snippet here..."
+                    style="width: 100%; min-height: 100px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: monospace; outline: none;"></textarea>
+                <button id="processPasteBtn" class="btn btn-primary">Render Snippet</button>
+            </div>
+            <div id="sandboxWrapper" class="hidden animate" style="margin-top: 16px;">
+                <div
+                    style="font-size: 10px; font-weight: 800; color: var(--secondary); margin-bottom: 6px; text-transform: uppercase;">
+                    Sandbox Preview</div>
+                <div id="sandboxContent"
+                    style="background: white; border: 2px dashed var(--border); border-radius: 12px; padding: 12px; max-height: 200px; overflow: auto; cursor: crosshair;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Content -->
+        <div id="elementInfo" class="hidden animate">
+            <div class="hero-card">
+                <div class="hero-label">🚀 Recommended Locator</div>
+                <div id="heroLocatorValue" class="hero-value">// Select an element</div>
+                <div style="display: flex; gap: 8px;">
+                    <button id="copyHero" class="btn btn-primary" style="flex: 1;">Copy Locator</button>
+                    <button id="generateAIHero" class="btn btn-ghost" style="flex: 1;">🪄 AI Suggest</button>
+                </div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-title">Playwright Native</div>
+                <div class="locator-list">
+                    <div class="locator-row">
+                        <span class="locator-type">getByRole</span>
+                        <span class="locator-val" id="getByRole">-</span>
+                        <button class="copy-btn copy-item" data-id="getByRole">📋</button>
+                    </div>
+                    <div class="locator-row">
+                        <span class="locator-type">getByText</span>
+                        <span class="locator-val" id="getByText">-</span>
+                        <button class="copy-btn copy-item" data-id="getByText">📋</button>
+                    </div>
+                    <div class="locator-row">
+                        <span class="locator-type">getByTestId</span>
+                        <span class="locator-val" id="getByTestId">-</span>
+                        <button class="copy-btn copy-item" data-id="getByTestId">📋</button>
+                    </div>
+                    <div class="locator-row">
+                        <span class="locator-type">getByLabel</span>
+                        <span class="locator-val" id="getByLabel">-</span>
+                        <button class="copy-btn copy-item" data-id="getByLabel">📋</button>
+                    </div>
+                    <div class="locator-row">
+                        <span class="locator-type">getByPlaceholder</span>
+                        <span class="locator-val" id="getByPlaceholder">-</span>
+                        <button class="copy-btn copy-item" data-id="getByPlaceholder">📋</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-box">
+                <div class="section-title">Traditional</div>
+                <div class="locator-list">
+                    <div class="locator-row">
+                        <span class="locator-type">CSS</span>
+                        <span class="locator-val" id="cssLocator">-</span>
+                        <button class="copy-btn copy-item" data-id="cssLocator">📋</button>
+                    </div>
+                    <div class="locator-row">
+                        <span class="locator-type">XPath</span>
+                        <span class="locator-val" id="xpathLocator">-</span>
+                        <button class="copy-btn copy-item" data-id="xpathLocator">📋</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="aiResults" class="hidden animate"
+                style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+
+            <div class="code-area">
+                <div class="lang-switch">
+                    <button class="lang-btn active" data-lang="python">Python</button>
+                    <button class="lang-btn" data-lang="javascript">JS</button>
+                    <button class="lang-btn" data-lang="java">Java</button>
+                    <div style="flex: 1"></div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                        <input type="checkbox" id="addWaitFor" style="accent-color: var(--primary);">
+                        <label for="addWaitFor"
+                            style="font-size: 9px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Wait</label>
+                    </div>
+                </div>
+                <pre id="codeBlock"
+                    style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #e2e8f0; white-space: pre-wrap; cursor: pointer;">// Code will appear here</pre>
+            </div>
+        </div>
+    </div>
+
+    <footer class="page-footer">
+        <div class="status-pill">
+            <div style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></div>
+            <span id="statusText">System Ready</span>
+        </div>
+        <div>v3.1.0 PRO</div>
+    </footer>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="hidden"
+        style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div class="animate"
+            style="background: white; border-radius: 20px; width: 100%; max-width: 320px; padding: 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="font-size: 16px; font-weight: 700;">AI Configuration</h2>
+                <button id="closeSettings"
+                    style="background: none; border: none; font-size: 20px; cursor: pointer;">&times;</button>
+            </div>
+            <div>
+                <label style="font-size: 11px; font-weight: 700; color: var(--secondary);">OPENAI API KEY</label>
+                <input type="password" id="apiKeyInput" placeholder="sk-..."
+                    style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; font-size: 12px; outline: none;">
+                <button id="saveSettings" class="btn btn-primary" style="width: 100%; margin-top: 16px;">Save
+                    Key</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="copyToast" class="copy-toast">Copied to clipboard!</div>
+    <script src="devtools-panel.js"></script>
+</body>
+
+</html>
