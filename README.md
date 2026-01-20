@@ -8,6 +8,34 @@ A powerful Chrome extension that generates Playwright element locators for any w
 - Click any element on a web page to inspect it
 - Real-time visual highlighting with blue outline
 - Hover preview of hovered elements
+- **NEW: Support for iframes and frames with nested components**
+
+### 🌐 Framework-Specific Component Detection
+The extension now intelligently detects and generates optimized locators for popular UI frameworks:
+
+#### **Angular DevExpress** (dx-* components)
+- dx-button, dx-textbox, dx-selectbox
+- dx-datagrid with row/cell detection
+- dx-form with component IDs
+- Automatic data-component-id extraction
+
+#### **React AG-Grid**
+- Grid containers and rows
+- Cell locators with col-id support
+- Header column detection
+- Row and cell indexing
+
+#### **Nexus Components** (data-component attribute)
+- Buttons, inputs, tables
+- Modal detection with titles
+- Dropdown and select components
+- Data-nexus-id tracking
+
+### 🎛️ Frame Support
+- **Detect iframes and cross-frame elements**
+- **Access elements within frames** automatically
+- **Framework components inside frames** are properly identified
+- Frame context is preserved in element data
 
 ### 🔍 12 Locator Generation Strategies
 **Traditional Locators (Fallback):**
@@ -36,6 +64,7 @@ A powerful Chrome extension that generates Playwright element locators for any w
 - Falls back to resilient CSS/XPath selectors
 - Copy code blocks directly to clipboard
 - Syntax highlighting for easy reading
+- **NEW: Framework-specific code generation for DevExpress, AG-Grid, and Nexus**
 
 ### 🛠️ Element Details
 - Tag name and element ID
@@ -44,6 +73,8 @@ A powerful Chrome extension that generates Playwright element locators for any w
 - Input type (for form elements)
 - Enabled/disabled state
 - Visibility status
+- **NEW: Detected framework type (Angular, React, Vue, etc.)**
+- **NEW: Framework-specific component metadata**
 
 ## Installation
 
@@ -101,6 +132,54 @@ The extension now integrates with **Google Gemini AI** to "heal" and optimize yo
     - Click the **"✨ Optimize with AI"** button in the inspector panel.
     - Wait a moment for the AI to analyze and suggest a better locator.
 
+### 🌐 Working with Framework Components (NEW!)
+
+#### Angular DevExpress Applications
+When inspecting DevExpress components:
+1. The extension automatically detects **dx-** prefixed classes
+2. Generates specialized locators using:
+   - Component IDs (`data-component-id`)
+   - Grid row/cell indices for data grids
+   - Form field identifiers
+3. Generates framework-aware code snippets
+
+**Example DevExpress Grid Locator:**
+```javascript
+// Inspect a cell in a dx-datagrid
+// Extension detects: dx-datagrid, row index, cell index
+const cellLocator = `.dx-datagrid[data-component-id="orders-grid"] .dx-row:nth-child(3) .dx-cell:nth-child(2)`;
+```
+
+#### React AG-Grid Applications
+When inspecting AG-Grid components:
+1. Extension detects **ag-** prefixed classes
+2. Automatically identifies:
+   - Grid container ID
+   - Row indices and IDs
+   - Cell column IDs (`col-id`)
+   - Header columns
+3. Generates AG-Grid compatible locators
+
+**Example AG-Grid Locator:**
+```javascript
+// Inspect a cell in an ag-grid
+// Extension detects: grid ID, row, column
+const cellLocator = `#data-grid [role="row"]:nth-child(5) [role="gridcell"]:nth-child(3)`;
+```
+
+#### Nexus Components
+When inspecting Nexus UI framework components:
+1. Extension identifies **data-component** attributes
+2. Detects component types: button, input, table, modal, dropdown
+3. Tracks component IDs and metadata
+4. Generates data-driven locators
+
+**Example Nexus Component Locator:**
+```javascript
+// Inspect a Nexus button
+const buttonLocator = `[data-component="button"][data-nexus-id="submit-btn"]`;
+```
+
 ### Starting Element Inspection
 
 1.  **Click the extension icon** in your Chrome toolbar.
@@ -112,16 +191,27 @@ The extension now integrates with **Google Gemini AI** to "heal" and optimize yo
 
 1.  **With inspector active**, hover over any element on the page.
     - The element highlights with a blue outline.
+    - **Works with iframes**: If hovering over elements inside an iframe, the extension automatically detects the frame context.
 2.  **Click on an element** to select it.
     - The inspection mode pauses automatically.
     - The overlay panel displays unique locators for the clicked element.
+    - **For framework components**, framework-specific data is also displayed
     - **Note**: The panel **stays open** (now movable and resizable!) so you can copy locators or start inspecting again immediately.
+
+### Inspecting Elements in iframes
+
+The extension now automatically handles iframes:
+1. **Hover over elements inside an iframe** - The element picker detects the frame context
+2. **Frame metadata is preserved** - The element data includes frame information
+3. **Framework components in frames** - DevExpress, AG-Grid, and Nexus components inside frames are detected
+4. **Code generation works across frames** - Generated code will reference the correct frame context when needed
 
 ### Copying Locators
 
 1.  **In the floating panel**:
     - Click the **📋 clipboard icon** next to any locator to copy it.
     - **Native Locators** (Role, Text, etc.) are prioritized at the top.
+    - **Framework Locators** (if detected) appear with framework prefix
     - **Rel XPath** (Smart) and **Abs XPath** (Full) are also available.
 
 ### Generating Code
@@ -130,9 +220,41 @@ The extension now integrates with **Google Gemini AI** to "heal" and optimize yo
     - Toggle between **Python**, **JavaScript**, or **Java**.
     - The code block updates instantly with the click/fill command using the best locator.
     - **Smart Actions**: Inputs generate `.fill()`, checkboxes `.check()`, and buttons `.click()`.
+    - **Framework-aware code**: For DevExpress, AG-Grid, and Nexus components, appropriate methods are used
     - Click the code block itself to copy the full statement.
 
 ## Locator Examples
+
+### Framework-Specific Examples
+
+#### Angular DevExpress Button
+```javascript
+// Locator generated by extension
+.dx-button:contains("Save")
+
+// Generated code
+await page.locator('.dx-button:contains("Save")').click();
+```
+
+#### React AG-Grid Cell
+```javascript
+// Locator for data grid cell
+#data-grid [role="row"]:nth-child(3) [role="gridcell"]:nth-child(2)
+
+// Generated code
+await page.locator('#data-grid [role="row"]:nth-child(3) [role="gridcell"]:nth-child(2)').click();
+```
+
+#### Nexus Modal
+```javascript
+// Locator for modal component
+[data-component="modal"][data-title="Confirm Action"]
+
+// Generated code
+await page.locator('[data-component="modal"][data-title="Confirm Action"]').click();
+```
+
+### Standard Locator Examples
 
 ### CSS Selector
 ```css
@@ -308,20 +430,39 @@ Generated code works with:
 playwright-locator-inspector/
 ├── manifest.json          # Chrome extension manifest (v3)
 ├── src/
-│   ├── popup.html         # Extension popup UI (400+ lines)
-│   ├── popup.css          # Styling (400+ lines, professional design)
-│   ├── popup.js           # Popup logic and interactions (200+ lines)
-│   ├── content.js         # Element inspection logic (300+ lines)
-│   ├── background.js      # Service worker for MV3
+│   ├── devtools-panel.html         # Inspector panel UI
+│   ├── devtools-panel.js           # Inspector panel logic
+│   ├── devtools.html               # DevTools panel entry
+│   ├── devtools.js                 # DevTools panel bootstrap
+│   ├── background.js               # Service worker for MV3
+│   ├── framework-locators.js       # Framework-specific detection (NEW)
 │   └── icons/
 │       ├── icon16.png     # 16x16 icon
 │       ├── icon48.png     # 48x48 icon
 │       └── icon128.png    # 128x128 icon
-├── generate-icons.js      # Icon generation script
 └── README.md              # This file
 ```
 
 ## Technical Details
+
+### Framework Detection Logic
+The extension includes advanced framework detection:
+
+**Detection Supported:**
+- **Angular**: ng-app, ng-version, Angular global references, _ng attributes
+- **React**: React DevTools hook, data-react-root, _reactRootContainer
+- **Vue**: Vue global, Vue DevTools hook
+- **DevExpress**: dx-* CSS classes and data-component-id attributes
+- **AG-Grid**: ag-* CSS classes and role attributes
+- **Nexus**: data-component attributes
+
+### Frame Handling
+The extension now properly detects and handles:
+- **iframe detection**: Automatic discovery of all iframes on the page
+- **Cross-frame access**: Attempts to access iframe content (respects CORS)
+- **Frame context preservation**: Element data includes frame information
+- **Nested component detection**: Framework components inside frames are identified
+- **Frame metadata**: Tracks frame ID, name, source, and accessibility status
 
 ### Permissions Used
 - `scripting` - Inject content scripts for element inspection
@@ -383,7 +524,19 @@ page.locator('[role="button"]')
 
 ## Version History
 
-- **v3.0** (CURRENT) - Full Playwright Native Locator Support
+- **v4.0** (CURRENT) - Framework-Specific Component Support & Frame Handling
+  - **NEW**: Angular DevExpress component detection and locator generation
+  - **NEW**: React AG-Grid component detection and locator generation
+  - **NEW**: Nexus component detection and locator generation
+  - **NEW**: iframe and frame detection with cross-frame element inspection
+  - **NEW**: Framework detection (Angular, React, Vue)
+  - **NEW**: Framework metadata in element details
+  - **NEW**: Framework-specific code generation
+  - Improved element picker to handle nested frames
+  - Enhanced locator generation for complex UI frameworks
+  - Better support for shadow DOM and web components
+
+- **v3.0** - Full Playwright Native Locator Support
   - Added support for 5 Playwright native locators (getByTestId, getByLabel, etc.)
   - Automatic selection between native locators and resilient fallbacks
   - Updated code generation to use native locators when available

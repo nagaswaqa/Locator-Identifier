@@ -180,7 +180,11 @@ function startElementPicker() {
                     try {
                         const rect = element.getBoundingClientRect();
                         const innerElement = element.contentDocument.elementFromPoint(x - rect.left, y - rect.top);
-                        if (innerElement) return innerElement;
+                        if (innerElement) {
+                            // Store frame context for later use
+                            innerElement.__pwFrameContext = element;
+                            return innerElement;
+                        }
                     } catch (e) {}
                 }
                 while (element && element.shadowRoot) {
@@ -347,7 +351,19 @@ function getExtractionFunctions() {
         isTextUnique,
         getGlobalIndex,
         escapeXPathText,
-        getPaddedXPathSegment
+        getPaddedXPathSegment,
+        // Framework detection functions
+        detectFrameworkLocators,
+        detectFramework,
+        detectDevExpressLocators,
+        detectAGGridLocators,
+        detectNexusLocators,
+        detectFramesAndElements,
+        getElementInFrame,
+        generateFrameworkCode,
+        generateDevExpressCode,
+        generateAGGridCode,
+        generateNexusCode
     ];
     return functions.map(f => f.toString()).join('\n');
 }
@@ -394,6 +410,9 @@ function extractElementData(element) {
         } catch (e) { console.error('XPath Fallback Error', e); }
     }
 
+    // Framework-specific detection
+    const frameworkLocators = detectFrameworkLocators(element);
+
     const data = {
         tag: element.tagName.toLowerCase(),
         id: element.id || '',
@@ -406,7 +425,11 @@ function extractElementData(element) {
         inputType: element.type || '',
         cssSelector: generateCSSSelector(element),
         xpath: xpath,
-        outerHTML: element.outerHTML.substring(0, 3000) // Cap it for AI
+        outerHTML: element.outerHTML.substring(0, 3000), // Cap it for AI
+        framework: frameworkLocators.framework,
+        devExpress: frameworkLocators.devExpress,
+        agGrid: frameworkLocators.agGrid,
+        nexus: frameworkLocators.nexus
     };
     return data;
 }
