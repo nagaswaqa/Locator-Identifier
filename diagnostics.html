@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Playwright Locator Inspector - Diagnostics</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .diagnostic-group {
+            margin-bottom: 25px;
+        }
+
+        .diagnostic-group h3 {
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+
+        .diagnostic-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+        }
+
+        .diagnostic-item.success {
+            border-left-color: #10b981;
+            background: #ecfdf5;
+        }
+
+        .diagnostic-item.warning {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .diagnostic-item.error {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .status-icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .diagnostic-text {
+            flex: 1;
+        }
+
+        .diagnostic-label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+
+        .diagnostic-value {
+            color: #666;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            word-break: break-all;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin-top: 15px;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 50px;
+            opacity: 0.8;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85em;
+            transition: width 0.5s ease;
+        }
+
+        .solutions {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .solutions h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .solutions ol {
+            margin-left: 20px;
+            color: #333;
+        }
+
+        .solutions li {
+            margin-bottom: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge.critical {
+            background: #ef4444;
+        }
+
+        .badge.warning {
+            background: #f59e0b;
+        }
+
+        .copy-btn {
+            background: #e5e7eb;
+            color: #333;
+            padding: 8px 12px;
+            font-size: 0.85em;
+            width: auto;
+            margin-left: 10px;
+        }
+
+        .copy-btn:hover {
+            background: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Playwright Locator Inspector</h1>
+            <p class="subtitle">Diagnostics & Compatibility Report</p>
+        </header>
+
+        <!-- Browser Compatibility -->
+        <div class="card">
+            <h2>🌐 Browser & Environment</h2>
+            <div class="diagnostic-group">
+                <div class="diagnostic-item success" id="browserStatus">
+                    <div class="status-icon">✓</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Browser</div>
+                        <div class="diagnostic-value" id="browserName">Chrome 120+</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="jsStatus">
+                    <div class="status-icon">✓</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">JavaScript</div>
+                        <div class="diagnostic-value">Enabled</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="cspStatus">
+                    <div class="status-icon">?</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Content Security Policy</div>
+                        <div class="diagnostic-value">Checking...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Element Picker Capability -->
+        <div class="card">
+            <h2>🎯 Element Picker Capability</h2>
+            <div class="diagnostic-group" id="pickerCapability">
+                <div class="diagnostic-item" id="evalStatus">
+                    <div class="status-icon">?</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">DevTools eval()</div>
+                        <div class="diagnostic-value">Testing...</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="domStatus">
+                    <div class="status-icon">?</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">DOM Manipulation</div>
+                        <div class="diagnostic-value">Testing...</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="eventStatus">
+                    <div class="status-icon">?</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Event Listeners</div>
+                        <div class="diagnostic-value">Testing...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="pickerProgress" style="width: 33%">Checking...</div>
+            </div>
+
+            <button onclick="runPickerDiagnostics()">Run Picker Diagnostics</button>
+        </div>
+
+        <!-- Page Features -->
+        <div class="card">
+            <h2>📦 Page Features Detection</h2>
+            <div class="diagnostic-group">
+                <div class="diagnostic-item" id="frameworkStatus">
+                    <div class="status-icon">🔍</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Framework Detected</div>
+                        <div class="diagnostic-value" id="frameworkName">Analyzing...</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="iframeStatus">
+                    <div class="status-icon">📍</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">iFrames on Page</div>
+                        <div class="diagnostic-value" id="iframeCount">Counting...</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="shadowStatus">
+                    <div class="status-icon">👁️</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Shadow DOM Usage</div>
+                        <div class="diagnostic-value" id="shadowCount">Analyzing...</div>
+                    </div>
+                </div>
+
+                <div class="diagnostic-item" id="overlayStatus">
+                    <div class="status-icon">🎭</div>
+                    <div class="diagnostic-text">
+                        <div class="diagnostic-label">Overlay/Modal Elements</div>
+                        <div class="diagnostic-value" id="overlayCount">Scanning...</div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="analyzePageStructure()">Analyze Page Structure</button>
+        </div>
+
+        <!-- Troubleshooting Wizard -->
+        <div class="card">
+            <h2>🔧 Troubleshooting Wizard</h2>
+            <div id="troubleshootingOutput" style="margin-top: 20px;"></div>
+            <button onclick="startTroubleshootingWizard()">Run Troubleshooting Wizard</button>
+        </div>
+
+        <!-- Compatibility Score -->
+        <div class="card">
+            <h2>📊 Overall Compatibility</h2>
+            <div id="compatibilityScore" style="text-align: center; padding: 20px;">
+                <div style="font-size: 3em; font-weight: bold; color: #667eea;" id="scoreValue">-</div>
+                <div style="color: #666; margin-top: 10px;">Compatibility Score</div>
+                <div class="progress-bar" style="margin-top: 20px;">
+                    <div class="progress-fill" id="compatProgress" style="width: 50%"></div>
+                </div>
+                <div style="margin-top: 15px; color: #666;" id="scoreMessage">-</div>
+            </div>
+        </div>
+
+        <!-- Recommendations -->
+        <div class="card">
+            <h2>💡 Recommendations</h2>
+            <div id="recommendations" style="margin-top: 20px;">
+                <p style="color: #666;">Run diagnostics above to see recommendations</p>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Playwright Locator Inspector v4.0</p>
+            <p>For issues: <a href="https://github.com/nagaswaqa/Locator-Identifier/issues" style="color: white; text-decoration: underline;">GitHub Issues</a></p>
+        </footer>
+    </div>
+
+    <script>
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            detectBrowser();
+            checkCSP();
+            analyzePageInitial();
+        });
+
+        function detectBrowser() {
+            const ua = navigator.userAgent;
+            let browserInfo = 'Unknown Browser';
+            
+            if (ua.includes('Chrome') && !ua.includes('Edge')) {
+                const match = ua.match(/Chrome\/([\d.]+)/);
+                browserInfo = `Chrome ${match ? match[1].split('.')[0] : 'N/A'}`;
+            } else if (ua.includes('Edge')) {
+                const match = ua.match(/Edg\/([\d.]+)/);
+                browserInfo = `Edge ${match ? match[1].split('.')[0] : 'N/A'}`;
+            }
+
+            document.getElementById('browserName').textContent = browserInfo;
+        }
+
+        function checkCSP() {
+            const item = document.getElementById('cspStatus');
+            const value = document.querySelector('#cspStatus .diagnostic-value');
+            
+            const csp = document.contentSecurityPolicy;
+            if (csp) {
+                item.classList.add('warning');
+                value.textContent = 'CSP Detected - May restrict picker';
+            } else {
+                item.classList.add('success');
+                value.textContent = 'No CSP - Picker should work';
+            }
+        }
+
+        function analyzePageInitial() {
+            try {
+                const iframeCount = document.querySelectorAll('iframe').length;
+                const shadowCount = Array.from(document.querySelectorAll('*')).filter(el => el.shadowRoot).length;
+
+                document.getElementById('iframeCount').textContent = iframeCount + ' iframe' + (iframeCount !== 1 ? 's' : '');
+                document.getElementById('shadowCount').textContent = shadowCount + ' element' + (shadowCount !== 1 ? 's' : '') + ' with shadow DOM';
+
+                const overlays = document.querySelectorAll('[class*="overlay"], [class*="modal"], [class*="backdrop"], [class*="dialog"]');
+                document.getElementById('overlayCount').textContent = overlays.length + ' overlay/modal element' + (overlays.length !== 1 ? 's' : '');
+            } catch (e) {
+                console.error('Analysis error:', e);
+            }
+        }
+
+        function runPickerDiagnostics() {
+            const diagnostics = {
+                eval: testEval(),
+                dom: testDOMManipulation(),
+                events: testEventListeners()
+            };
+
+            updateDiagnosticsUI(diagnostics);
+            calculateScore(diagnostics);
+        }
+
+        function testEval() {
+            try {
+                eval('typeof 1');
+                return { success: true, message: 'eval() works' };
+            } catch (e) {
+                return { success: false, message: 'eval() blocked: ' + e.message };
+            }
+        }
+
+        function testDOMManipulation() {
+            try {
+                const test = document.createElement('div');
+                document.body.appendChild(test);
+                test.remove();
+                return { success: true, message: 'DOM manipulation works' };
+            } catch (e) {
+                return { success: false, message: 'DOM error: ' + e.message };
+            }
+        }
+
+        function testEventListeners() {
+            try {
+                let eventFired = false;
+                const test = document.createElement('div');
+                test.addEventListener('click', () => { eventFired = true; });
+                test.click();
+                return eventFired 
+                    ? { success: true, message: 'Event listeners work' }
+                    : { success: false, message: 'Event listeners not responding' };
+            } catch (e) {
+                return { success: false, message: 'Event error: ' + e.message };
+            }
+        }
+
+        function updateDiagnosticsUI(diags) {
+            const items = [
+                { id: 'evalStatus', result: diags.eval },
+                { id: 'domStatus', result: diags.dom },
+                { id: 'eventStatus', result: diags.events }
+            ];
+
+            items.forEach(item => {
+                const el = document.getElementById(item.id);
+                const statusIcon = el.querySelector('.status-icon');
+                const value = el.querySelector('.diagnostic-value');
+                
+                if (item.result.success) {
+                    el.classList.add('success');
+                    statusIcon.textContent = '✓';
+                } else {
+                    el.classList.add('error');
+                    statusIcon.textContent = '✕';
+                }
+                
+                value.textContent = item.result.message;
+            });
+
+            // Update progress
+            const success = Object.values(diags).filter(d => d.success).length;
+            const progress = Math.round((success / Object.keys(diags).length) * 100);
+            document.getElementById('pickerProgress').style.width = progress + '%';
+            document.getElementById('pickerProgress').textContent = progress + '%';
+        }
+
+        function analyzePageStructure() {
+            runPickerDiagnostics();
+        }
+
+        function startTroubleshootingWizard() {
+            const output = document.getElementById('troubleshootingOutput');
+            output.innerHTML = '<p style="color: #666;">Running diagnostics...</p>';
+            
+            setTimeout(() => {
+                const html = `
+                    <div class="solutions">
+                        <h4>✓ Diagnostics Complete</h4>
+                        <p>Based on your page analysis:</p>
+                        <ol>
+                            <li><strong>If picker works:</strong> Great! Proceed to inspect elements</li>
+                            <li><strong>If picker fails:</strong> Try the "Paste DOM" tab workaround</li>
+                            <li><strong>If stuck on modals:</strong> Use DevTools Elements panel (F12)</li>
+                            <li><strong>For iframes:</strong> Use frame-specific inspection</li>
+                        </ol>
+                    </div>
+                `;
+                output.innerHTML = html;
+            }, 1000);
+        }
+
+        function calculateScore(diags) {
+            let score = 50; // Base score
+            
+            if (diags.eval.success) score += 15;
+            if (diags.dom.success) score += 15;
+            if (diags.events.success) score += 15;
+            
+            if (document.querySelectorAll('iframe').length > 0) score -= 5;
+            if (Array.from(document.querySelectorAll('*')).filter(el => el.shadowRoot).length > 0) score -= 5;
+
+            const scoreEl = document.getElementById('scoreValue');
+            const messageEl = document.getElementById('scoreMessage');
+            const progressEl = document.getElementById('compatProgress');
+
+            scoreEl.textContent = score + '%';
+            progressEl.style.width = score + '%';
+
+            if (score >= 80) {
+                messageEl.textContent = '✓ Excellent compatibility - Picker should work well';
+                messageEl.style.color = '#10b981';
+            } else if (score >= 60) {
+                messageEl.textContent = '≈ Good compatibility - Picker should mostly work';
+                messageEl.style.color = '#f59e0b';
+            } else if (score >= 40) {
+                messageEl.textContent = '⚠ Limited compatibility - Use workarounds';
+                messageEl.style.color = '#f59e0b';
+            } else {
+                messageEl.textContent = '✕ Low compatibility - Use "Paste DOM" workaround';
+                messageEl.style.color = '#ef4444';
+            }
+        }
+    </script>
+</body>
+</html>

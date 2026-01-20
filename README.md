@@ -417,6 +417,26 @@ await element.click();
 
 ## Troubleshooting
 
+### 🎯 Element Picker Issues (NEW in v4.0)
+
+**"Picker failed to start" error?**
+
+The element picker may fail on certain pages due to security policies or page structure. 
+
+**See the comprehensive guide**: [PICKER_TROUBLESHOOTING.md](PICKER_TROUBLESHOOTING.md)
+
+**Quick fixes:**
+1. Refresh the page and try again
+2. Close and reopen DevTools (F12)
+3. Use "Paste DOM" tab as workaround
+4. Check DevTools Console for error details
+
+**Available workarounds when picker fails:**
+- Use DevTools Elements panel to inspect elements directly
+- Paste HTML in "Paste DOM" tab and click elements in preview
+- Use frame inspection for iframes
+- Check Security Policy restrictions
+
 ### Extension doesn't appear in toolbar
 - Make sure you're in Developer mode in `chrome://extensions/`
 - Click "Load unpacked" and select the correct folder

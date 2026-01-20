@@ -76,6 +76,21 @@ function setupEventListeners() {
             showToast('Settings saved!');
         });
     });
+
+    // Escape key to cancel picker
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const btn = document.getElementById('toggleInspect');
+            if (btn.innerHTML.includes('⏹')) {
+                // Picker is active, cancel it
+                chrome.devtools.inspectedWindow.eval('if(window.__pwPickerCleanup) window.__pwPickerCleanup();');
+                btn.innerHTML = '<span>🎯</span> Inspect Page';
+                btn.style.backgroundColor = '';
+                updateStatus('Picker cancelled');
+                stopPolling();
+            }
+        }
+    });
 }
 
 function clearLocators() {
@@ -145,184 +160,288 @@ function inspectLocalElement(el) {
 
 function startElementPicker() {
     const btn = document.getElementById('toggleInspect');
+    
+    // Get simplified picker code
+    const pickerCode = getSimplifiedPickerCode();
+    
+    chrome.devtools.inspectedWindow.eval(pickerCode, (result, error) => {
+        handlePickerResult(result, error, btn);
+    });
+}
 
-    chrome.devtools.inspectedWindow.eval(`
+/**
+ * Simplified picker code for better reliability
+ */
+function getSimplifiedPickerCode() {
+    return `
         (function() {
-            // Force cleanup of any old state
-            if (window.__pwPickerCleanup) {
-                window.__pwPickerCleanup();
-                return 'cancelled';
-            }
-            // Also explicitly remove any lingering highlights
-            const oldHighlight = document.getElementById('__pw-highlight');
-            if (oldHighlight) oldHighlight.remove();
-            
-            const highlight = document.createElement('div');
-            highlight.id = '__pw-highlight';
-            highlight.style.cssText = \`
-                position: fixed;
-                border: 3px solid #6366f1;
-                background: rgba(99, 102, 241, 0.15);
-                pointer-events: none;
-                display: none;
-                z-index: 2147483647;
-                box-shadow: 
-                    0 0 15px rgba(99, 102, 241, 0.5),
-                    inset 0 0 0 1px rgba(99, 102, 241, 0.3);
-                border-radius: 6px;
-                transition: all 0.08s ease-out;
-                backface-visibility: hidden;
-            \`;
-            document.body.appendChild(highlight);
-            
-            let hoveredElement = null;
-            
-            function isOverlayElement(el) {
-                if (!el || el === highlight) return false;
-                const tag = el.tagName.toLowerCase();
-                if (tag === 'body' || tag === 'html') return false;
-                
-                const classList = el.className || '';
-                const id = el.id || '';
-                const style = window.getComputedStyle(el);
-                
-                // Common overlay patterns
-                const overlayPatterns = [
-                    /overlay|backdrop|modal|dialog|tooltip|popover|dropdown|menu|toast|notification|spinner|loader|modal-bg|modal-overlay|scrim|shade|dim|mask/i,
-                    /react-modal|ng-modal|v-modal|mdc-dialog__scrim/i
-                ];
-                
-                for (const pattern of overlayPatterns) {
-                    if (pattern.test(classList) || pattern.test(id)) {
-                        if (/content|body|wrapper|container|inner|card|panel|form/i.test(classList)) {
-                            continue;
-                        }
-                        return true;
-                    }
+            try {
+                // Force cleanup of any old state
+                if (window.__pwPickerCleanup) {
+                    window.__pwPickerCleanup();
+                    return 'cancelled';
                 }
+                // Remove old highlight
+                try {
+                    const oldHighlight = document.getElementById('__pw-highlight');
+                    if (oldHighlight) oldHighlight.remove();
+                } catch(e) {}
                 
-                // Check for semi-transparent overlay
-                const opacity = parseFloat(style.opacity);
-                const bgColor = style.backgroundColor;
-                if (opacity < 1 && opacity > 0.1) {
-                    const rgb = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-                    if (rgb) {
-                        const [, r, g, b] = rgb;
-                        const brightness = (parseInt(r) + parseInt(g) + parseInt(b)) / 3;
-                        if ((brightness < 50 || brightness > 200) && opacity < 0.6) {
-                            return true;
-                        }
-                    }
-                }
+                // Create highlight element
+                const highlight = document.createElement('div');
+                highlight.id = '__pw-highlight';
                 
-                return false;
-            }
-            
-            function getElementAtPoint(x, y) {
-                let element = document.elementFromPoint(x, y);
-                let depth = 0;
-                const maxDepth = 20;
-                const visited = new Set();
+                // Apply styles safely (avoid cssText issues)
+                highlight.style.position = 'fixed';
+                highlight.style.border = '3px solid #6366f1';
+                highlight.style.background = 'rgba(99, 102, 241, 0.15)';
+                highlight.style.pointerEvents = 'none';
+                highlight.style.display = 'none';
+                highlight.style.zIndex = '2147483647';
+                highlight.style.boxShadow = '0 0 15px rgba(99, 102, 241, 0.5), inset 0 0 0 1px rgba(99, 102, 241, 0.3)';
+                highlight.style.borderRadius = '6px';
+                highlight.style.transition = 'all 0.08s ease-out';
+                highlight.style.backfaceVisibility = 'hidden';
                 
-                while (element && depth < maxDepth) {
-                    if (visited.has(element)) break;
-                    visited.add(element);
+                // Append to body or documentElement
+                const target = document.body || document.documentElement;
+                if (!target) throw new Error('No valid DOM target found');
+                
+                target.appendChild(highlight);
+                
+                let hoveredElement = null;
+                
+                // Simplified overlay detection (more reliable)
+                function isSimpleOverlay(el) {
+                    if (!el || el === highlight) return false;
+                    const tag = el.tagName.toLowerCase();
+                    if (tag === 'body' || tag === 'html') return false;
                     
-                    // Skip overlay elements
-                    if (isOverlayElement(element)) {
-                        const originalPointerEvents = element.style.pointerEvents;
-                        element.style.pointerEvents = 'none';
-                        const next = document.elementFromPoint(x, y);
-                        element.style.pointerEvents = originalPointerEvents;
-                        
-                        if (next && next !== element) {
-                            element = next;
-                            depth++;
-                            continue;
-                        }
-                        break;
-                    }
+                    const cls = (el.className || '').toLowerCase();
+                    const id = (el.id || '').toLowerCase();
                     
-                    break;
+                    // Check for overlay keywords
+                    const overlayKeywords = ['overlay', 'backdrop', 'modal', 'dialog', 'tooltip', 'popover', 'dropdown', 'scrim'];
+                    return overlayKeywords.some(kw => cls.includes(kw) || id.includes(kw));
                 }
                 
-                // Check iframe
-                if (element && element.tagName === 'IFRAME') {
+                // Simplified element detection
+                function getElementAtPoint(x, y) {
                     try {
-                        const rect = element.getBoundingClientRect();
-                        const innerElement = element.contentDocument.elementFromPoint(x - rect.left, y - rect.top);
-                        if (innerElement) {
-                            innerElement.__pwFrameContext = element;
-                            return innerElement;
+                        let element = document.elementFromPoint(x, y);
+                        
+                        // Skip overlay if detected
+                        if (element && isSimpleOverlay(element)) {
+                            try {
+                                const saved = element.style.pointerEvents;
+                                element.style.pointerEvents = 'none';
+                                const next = document.elementFromPoint(x, y);
+                                if (next && !isSimpleOverlay(next)) {
+                                    element = next;
+                                } else {
+                                    element.style.pointerEvents = saved;
+                                }
+                            } catch(e) {}
                         }
-                    } catch (e) {}
-                }
-                
-                // Check shadow DOM
-                while (element && element.shadowRoot) {
-                    const shadowElement = element.shadowRoot.elementFromPoint(x, y);
-                    if (shadowElement) {
-                        element = shadowElement;
-                    } else {
-                        break;
+                        
+                        // Check iframe
+                        if (element && element.tagName === 'IFRAME') {
+                            try {
+                                const rect = element.getBoundingClientRect();
+                                const innerElement = element.contentDocument.elementFromPoint(x - rect.left, y - rect.top);
+                                if (innerElement) {
+                                    innerElement.__pwFrameContext = element;
+                                    return innerElement;
+                                }
+                            } catch (e) {}
+                        }
+                        
+                        // Check shadow DOM
+                        try {
+                            while (element && element.shadowRoot) {
+                                const shadowElement = element.shadowRoot.elementFromPoint(x, y);
+                                if (shadowElement) {
+                                    element = shadowElement;
+                                } else {
+                                    break;
+                                }
+                            }
+                        } catch(e) {}
+                        
+                        return element;
+                    } catch(e) {
+                        return null;
                     }
                 }
                 
-                return element;
-            }
-            
-            function updateHighlight(e) {
-                const el = getElementAtPoint(e.clientX, e.clientY);
-                if (el === highlight || !el) return;
+                // Update highlight box
+                function updateHighlight(e) {
+                    try {
+                        const el = getElementAtPoint(e.clientX, e.clientY);
+                        if (el && el !== highlight && el.tagName !== 'HTML' && el.tagName !== 'BODY') {
+                            hoveredElement = el;
+                            const rect = el.getBoundingClientRect();
+                            highlight.style.display = 'block';
+                            highlight.style.top = rect.top + 'px';
+                            highlight.style.left = rect.left + 'px';
+                            highlight.style.width = rect.width + 'px';
+                            highlight.style.height = rect.height + 'px';
+                        }
+                    } catch(e) {
+                        console.error('Highlight update error:', e);
+                    }
+                }
                 
-                hoveredElement = el;
-                const rect = el.getBoundingClientRect();
-                highlight.style.display = 'block';
-                highlight.style.top = rect.top + 'px';
-                highlight.style.left = rect.left + 'px';
-                highlight.style.width = rect.width + 'px';
-                highlight.style.height = rect.height + 'px';
+                // Select element on click
+                function selectElement(e) {
+                    try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    } catch(e) {}
+                    
+                    if (hoveredElement) {
+                        window.__pwSelectedElement = hoveredElement;
+                    }
+                    window.__pwPickerCleanup();
+                }
+                
+                // Cleanup function
+                window.__pwPickerCleanup = function() {
+                    try {
+                        document.removeEventListener('mousemove', updateHighlight, true);
+                    } catch(e) {}
+                    try {
+                        document.removeEventListener('click', selectElement, true);
+                    } catch(e) {}
+                    try {
+                        if (document.body) document.body.style.cursor = '';
+                    } catch(e) {}
+                    try {
+                        if (highlight) highlight.remove();
+                    } catch(e) {}
+                    try {
+                        delete window.__pwPickerCleanup;
+                        delete window.__pwPickerActive;
+                    } catch(e) {}
+                };
+                
+                // Setup event listeners
+                try {
+                    document.addEventListener('mousemove', updateHighlight, true);
+                    document.addEventListener('click', selectElement, true);
+                    if (document.body) document.body.style.cursor = 'crosshair';
+                } catch(e) {
+                    throw new Error('Failed to setup event listeners: ' + e.message);
+                }
+                
+                window.__pwPickerActive = true;
+                return 'started';
+                
+            } catch(e) {
+                return { error: e.message, type: 'picker_init' };
             }
-            
-            function selectElement(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                window.__pwSelectedElement = hoveredElement;
-                window.__pwPickerCleanup();
-                return 'selected';
-            }
-            
-            window.__pwPickerCleanup = function() {
-                document.removeEventListener('mousemove', updateHighlight, true);
-                document.removeEventListener('click', selectElement, true);
-                document.body.style.cursor = '';
-                if (highlight) highlight.remove();
-                delete window.__pwPickerCleanup;
-                delete window.__pwPickerActive;
-            };
-            
-            document.addEventListener('mousemove', updateHighlight, true);
-            document.addEventListener('click', selectElement, true);
-            document.body.style.cursor = 'crosshair';
-            window.__pwPickerActive = true;
-            
-            return 'started';
         })();
-    `, (result, error) => {
-        if (error) {
-            updateStatus('Picker failed to start');
+    `;
+}
+
+/**
+ * Handle picker result with detailed error reporting
+ */
+function handlePickerResult(result, error, btn) {
+    if (error) {
+        console.error('Picker eval error:', error);
+        updateStatus('⚠️ Picker init failed - trying fallback...');
+        
+        // Try fallback after a short delay
+        setTimeout(() => startFallbackPicker(btn), 500);
+        return;
+    }
+    
+    if (result && result.error) {
+        // Error occurred in injected code
+        console.error('Picker error:', result.error, 'Type:', result.type);
+        updateStatus('❌ Picker failed: ' + result.error);
+        btn.innerHTML = '<span>🎯</span> Inspect Page';
+        stopPolling();
+        return;
+    }
+    
+    if (result === 'started') {
+        updateStatus('✓ Click element to inspect (Esc to cancel)');
+        btn.innerHTML = '<span>⏹</span> Cancel';
+        btn.style.backgroundColor = '#dc2626';
+        startPolling();
+    } else if (result === 'cancelled') {
+        btn.innerHTML = '<span>🎯</span> Inspect Page';
+        btn.style.backgroundColor = '';
+        updateStatus('Picker cancelled');
+        stopPolling();
+    } else {
+        console.warn('Unexpected picker result:', result);
+        updateStatus('Picker returned unexpected state');
+    }
+}
+
+/**
+ * Fallback picker when main picker fails
+ */
+function startFallbackPicker(btn) {
+    console.log('Starting fallback picker mechanism...');
+    
+    const fallbackCode = `
+        (function() {
+            try {
+                // Try alternate initialization without eval context issues
+                if (window.__pwPickerActive) return 'already-active';
+                
+                // Simple marker to indicate picker is attempting to run
+                window.__pwFallbackMode = true;
+                window.__pwPickerActive = true;
+                
+                // Return status
+                return 'fallback-started';
+            } catch(e) {
+                return { error: 'Fallback init: ' + e.message };
+            }
+        })();
+    `;
+    
+    chrome.devtools.inspectedWindow.eval(fallbackCode, (result, error) => {
+        if (error || (result && result.error)) {
+            console.error('Fallback failed:', error || result.error);
+            updateStatus('Element picker unavailable on this page');
+            showPickerUnavailableUI(btn);
             return;
         }
-        if (result === 'started') {
-            updateStatus('Inspecting... (Click element)');
-            btn.innerHTML = '<span>⏹</span> Cancel';
-            startPolling();
-        } else if (result === 'cancelled') {
-            btn.innerHTML = '<span>🎯</span> Inspect Page';
-            updateStatus('Picker cancelled');
-            stopPolling();
+        
+        if (result === 'fallback-started') {
+            updateStatus('Fallback mode: Use DevTools Elements panel');
+            btn.innerHTML = '<span>ℹ️</span> Use DevTools';
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
         }
     });
+}
+
+/**
+ * Show alternatives when picker unavailable
+ */
+function showPickerUnavailableUI(btn) {
+    btn.innerHTML = '<span>⚠️</span> Picker Unavailable';
+    btn.style.opacity = '0.6';
+    btn.disabled = true;
+    
+    // Log help text to console
+    console.group('%cPlaywright Locator Inspector', 'color: #6366f1; font-weight: bold; font-size: 12px');
+    console.log('%cPicker unavailable on this page.', 'color: #dc2626');
+    console.log('%cAlternatives:', 'color: #f59e0b; font-weight: bold');
+    console.log('1. Use DevTools Elements panel (F12) → Right-click any element → "Inspect"');
+    console.log('2. Paste HTML in "Paste DOM" tab → Click elements in preview');
+    console.log('3. Generate locators manually using the panel');
+    console.groupEnd();
+    
+    // Show help in panel status
+    updateStatus('Use DevTools Elements panel to inspect elements');
 }
 
 function startPolling() {
