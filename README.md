@@ -10,8 +10,27 @@ A powerful Chrome extension that generates Playwright element locators for any w
 - Hover preview of hovered elements
 - **NEW: Support for iframes and frames with nested components**
 
-### 🌐 Framework-Specific Component Detection
-The extension now intelligently detects and generates optimized locators for popular UI frameworks:
+### � CSS Overlay Support (NEW!)
+The extension now intelligently handles CSS overlays and modal dialogs:
+- **Automatic overlay detection** - Identifies and skips overlay elements
+- **Modal-aware selection** - Distinguishes between backdrops and content
+- **Improved z-index management** - Highlight stays visible above overlays
+- **Smart element detection** - Finds actual elements beneath overlays
+
+**Supported Overlay Types**:
+- Bootstrap modals and backdrops
+- Material Design dialogs
+- React portals and overlays
+- Angular CDK overlays
+- Vue modals
+- Tooltips and popovers
+- Loading spinners
+- Semi-transparent backdrops
+
+### 📋 Known Limitations
+- **Cross-origin iframes**: Cannot access elements in cross-origin frames (browser security)
+- **CSS transforms**: Highlight may have minor misalignment with heavily transformed elements
+- **Deep shadow DOM**: Limited support for multiple levels of shadow DOM nesting
 
 #### **Angular DevExpress** (dx-* components)
 - dx-button, dx-textbox, dx-selectbox
@@ -403,10 +422,52 @@ await element.click();
 - Click "Load unpacked" and select the correct folder
 - Refresh the page with the extension loaded
 
+### Issues with Overlays and Modals (NEW in v4.0)
+
+**Problem**: Cannot select elements inside a modal or overlay
+
+**Solution**:
+1. The extension now automatically detects and skips overlays
+2. Try clicking directly on the element you want to inspect
+3. If the overlay is transparent, you can click through it
+4. If blocked, try waiting for the modal to fully load (wait ~500ms)
+
+**Workaround for stubborn overlays**:
+- Open browser console and run:
+  ```javascript
+  testOverlayDetection(); // Shows all detected overlays
+  analyzePageOverlays(); // Get detailed overlay analysis
+  ```
+- Or manually inspect using DevTools Elements panel, then use "Select from page" in extension
+
+### Z-Index Issues
+
+**Problem**: Highlight appears behind some overlays
+
+**Status**: Fixed in v4.0+
+- Highlight z-index is now 2147483647 (maximum safe value)
+- Should appear above all standard overlays
+- If still appearing behind, the overlay has unusual CSS properties
+
+### Cross-Origin iframe Elements
+
+**Problem**: Cannot select elements in iframes from different domains
+
+**Why**: Browser security policy (CORS) prevents access to cross-origin content
+
+**Workaround**:
+- Test the inner document separately in its own tab
+- Or use browser DevTools to inspect the iframe directly
+- Report the locator pattern to your development team
+
 ### Locators not generating
 - Make sure the element is visible on the page
 - Try a different locator type if one isn't working
 - Some elements (like iframes) may need special handling
+
+### Icons not showing
+- Run `node generate-icons.js` to create icon files
+- Reload the extension in `chrome://extensions/`
 ## Browser Support
 
 - **Chrome** 88+ (Manifest v3 support required)

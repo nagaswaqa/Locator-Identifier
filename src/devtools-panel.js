@@ -161,37 +161,113 @@ function startElementPicker() {
             highlight.id = '__pw-highlight';
             highlight.style.cssText = \`
                 position: fixed;
-                border: 2px solid #6366f1;
-                background: rgba(99, 102, 241, 0.1);
+                border: 3px solid #6366f1;
+                background: rgba(99, 102, 241, 0.15);
                 pointer-events: none;
                 display: none;
-                z-index: 2147483646;
-                box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
-                border-radius: 4px;
-                transition: all 0.1s ease-out;
+                z-index: 2147483647;
+                box-shadow: 
+                    0 0 15px rgba(99, 102, 241, 0.5),
+                    inset 0 0 0 1px rgba(99, 102, 241, 0.3);
+                border-radius: 6px;
+                transition: all 0.08s ease-out;
+                backface-visibility: hidden;
             \`;
             document.body.appendChild(highlight);
             
             let hoveredElement = null;
             
+            function isOverlayElement(el) {
+                if (!el || el === highlight) return false;
+                const tag = el.tagName.toLowerCase();
+                if (tag === 'body' || tag === 'html') return false;
+                
+                const classList = el.className || '';
+                const id = el.id || '';
+                const style = window.getComputedStyle(el);
+                
+                // Common overlay patterns
+                const overlayPatterns = [
+                    /overlay|backdrop|modal|dialog|tooltip|popover|dropdown|menu|toast|notification|spinner|loader|modal-bg|modal-overlay|scrim|shade|dim|mask/i,
+                    /react-modal|ng-modal|v-modal|mdc-dialog__scrim/i
+                ];
+                
+                for (const pattern of overlayPatterns) {
+                    if (pattern.test(classList) || pattern.test(id)) {
+                        if (/content|body|wrapper|container|inner|card|panel|form/i.test(classList)) {
+                            continue;
+                        }
+                        return true;
+                    }
+                }
+                
+                // Check for semi-transparent overlay
+                const opacity = parseFloat(style.opacity);
+                const bgColor = style.backgroundColor;
+                if (opacity < 1 && opacity > 0.1) {
+                    const rgb = bgColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                    if (rgb) {
+                        const [, r, g, b] = rgb;
+                        const brightness = (parseInt(r) + parseInt(g) + parseInt(b)) / 3;
+                        if ((brightness < 50 || brightness > 200) && opacity < 0.6) {
+                            return true;
+                        }
+                    }
+                }
+                
+                return false;
+            }
+            
             function getElementAtPoint(x, y) {
                 let element = document.elementFromPoint(x, y);
+                let depth = 0;
+                const maxDepth = 20;
+                const visited = new Set();
+                
+                while (element && depth < maxDepth) {
+                    if (visited.has(element)) break;
+                    visited.add(element);
+                    
+                    // Skip overlay elements
+                    if (isOverlayElement(element)) {
+                        const originalPointerEvents = element.style.pointerEvents;
+                        element.style.pointerEvents = 'none';
+                        const next = document.elementFromPoint(x, y);
+                        element.style.pointerEvents = originalPointerEvents;
+                        
+                        if (next && next !== element) {
+                            element = next;
+                            depth++;
+                            continue;
+                        }
+                        break;
+                    }
+                    
+                    break;
+                }
+                
+                // Check iframe
                 if (element && element.tagName === 'IFRAME') {
                     try {
                         const rect = element.getBoundingClientRect();
                         const innerElement = element.contentDocument.elementFromPoint(x - rect.left, y - rect.top);
                         if (innerElement) {
-                            // Store frame context for later use
                             innerElement.__pwFrameContext = element;
                             return innerElement;
                         }
                     } catch (e) {}
                 }
+                
+                // Check shadow DOM
                 while (element && element.shadowRoot) {
                     const shadowElement = element.shadowRoot.elementFromPoint(x, y);
-                    if (shadowElement) element = shadowElement;
-                    else break;
+                    if (shadowElement) {
+                        element = shadowElement;
+                    } else {
+                        break;
+                    }
                 }
+                
                 return element;
             }
             
