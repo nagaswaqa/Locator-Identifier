@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Playwright AutoLocator & CodeGen",
-  "version": "1.0.0",
-  "description": "DevTools panel to generate robust Playwright & XPath locators uniquely identified within the DOM.",
+  "name": "Playwright Locator Inspector",
+  "version": "4.0.0",
+  "description": "DevTools panel to generate robust Playwright & XPath locators uniquely identified within the DOM. Supports AI optimization.",
   "devtools_page": "src/devtools.html",
   "action": {
     "default_title": "Playwright Inspector",
@@ -16,10 +16,13 @@
     "service_worker": "src/background.js"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "scripting",
+    "activeTab"
   ],
   "host_permissions": [
-    "https://api.openai.com/*"
+    "https://api.openai.com/*",
+    "<all_urls>"
   ],
   "icons": {
     "16": "src/icons/icon16.png",

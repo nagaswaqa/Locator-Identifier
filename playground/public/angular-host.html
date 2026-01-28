@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Angular Production App (Simulated)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background: #fafafa;
+        }
+
+        header {
+            background: #dd0031;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .iframe-container {
+            flex: 1;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #fff;
+            position: relative;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .ng-badge {
+            background: #3f51b5;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body _nghost-c0>
+    <header _ngcontent-c0>
+        <div _ngcontent-c0 style="display: flex; align-items: center; gap: 15px;">
+            <svg width="30" height="30" viewBox="0 0 250 250">
+                <polygon fill="#DD0031"
+                    points="125,30 125,30 125,30 31.9,63.2 46.1,186.3 125,230 125,230 125,230 203.9,186.3 218.1,63.2 " />
+                <polygon fill="#C3002F"
+                    points="125,30 125,52.2 125,52.1 125,153.4 125,153.4 125,230 125,230 203.9,186.3 218.1,63.2 " />
+                <path fill="#FFFFFF"
+                    d="M125,52.1L66.8,182.6h21.7l11.7-29.2h49.4l11.7,29.2h21.7L125,52.1z M142,135.4H108l17-40.9L142,135.4z" />
+            </svg>
+            <span _ngcontent-c0>Angular Dashboard <span class="ng-badge">v17.2.0</span></span>
+        </div>
+        <div _ngcontent-c0>
+            Logged in as: <strong _ngcontent-c0>PlaywrightAgent@testing.com</strong>
+        </div>
+    </header>
+
+    <div _ngcontent-c0 style="display: flex; flex: 1;">
+        <div class="sidebar" _ngcontent-c1>
+            <h3 _ngcontent-c1>Navigation</h3>
+            <ul _ngcontent-c1 style="list-style: none; padding: 0;">
+                <li _ngcontent-c1 style="padding: 10px 0; border-bottom: 1px solid #eee;"><a href="#"
+                        _ngcontent-c1>Home</a></li>
+                <li _ngcontent-c1 style="padding: 10px 0; border-bottom: 1px solid #eee;"><a href="#" _ngcontent-c1>User
+                        Management (2025)</a></li>
+                <li _ngcontent-c1 style="padding: 10px 0; border-bottom: 1px solid #eee;"><a href="#"
+                        _ngcontent-c1>Legacy Assets v4.1</a></li>
+            </ul>
+        </div>
+
+        <div class="main-content" _ngcontent-c2>
+            <h2 _ngcontent-c2>Micro-Frontend Integration (React Tooling)</h2>
+            <p _ngcontent-c2 style="color: #666;">The following section is a <strong>React UI</strong> hosted inside an
+                Angular iframe.</p>
+
+            <div class="iframe-container" _ngcontent-c2>
+                <iframe src="/" title="React Micro-Frontend"></iframe>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

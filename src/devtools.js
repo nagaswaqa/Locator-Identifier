@@ -3,8 +3,8 @@
 
 chrome.devtools.panels.create(
     "PW Inspector",  // Panel title
-    "icons/icon48.png",  // Icon path
-    "src/devtools-panel.html",  // Panel HTML
+    "src/icons/icon48.png",  // Icon path relative to extension root
+    "src/devtools-panel.html",  // Panel HTML relative to extension root
     function (panel) {
         console.log('Playwright Inspector panel created');
     }

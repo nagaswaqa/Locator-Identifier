@@ -312,6 +312,104 @@
             color: white;
         }
 
+        /* AG-Grid Style - Premium Data Grid */
+        .ag-style-grid {
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            /* Flatter buttons/corners in screen */
+            background: white;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .ag-grid-header {
+            display: flex;
+            background: #f8f9fa;
+            /* Matches screen's light gray header */
+            border-bottom: 1px solid #d1d5db;
+            font-size: 11px;
+            font-weight: 700;
+            color: #1c2938;
+            text-transform: none;
+            /* Screen uses normal case bold */
+        }
+
+        .ag-grid-row {
+            display: flex;
+            border-bottom: 1px solid #e2e8f0;
+            transition: background 0.1s;
+            cursor: pointer;
+            min-height: 44px;
+            /* Airier rows */
+        }
+
+        .ag-grid-row:last-child {
+            border-bottom: none;
+        }
+
+        .ag-grid-row:hover {
+            background: #f1f5f9 !important;
+        }
+
+        .ag-grid-cell {
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            border-right: 1px solid #eef2f7;
+            /* Very subtle vertical lines like screen */
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: #374151;
+        }
+
+        .ag-grid-cell:last-child {
+            border-right: none;
+        }
+
+        .ag-cell-mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-main);
+        }
+
+        .ag-header-cell {
+            padding: 12px 14px;
+            border-right: 1px solid #d1d5db;
+            /* Distinct separators in header */
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ag-header-cell:last-child {
+            border-right: none;
+        }
+
+        .ag-cell-method {
+            width: 120px;
+            flex-shrink: 0;
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .ag-cell-value {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ag-cell-action {
+            width: 60px;
+            flex-shrink: 0;
+            justify-content: center;
+        }
+
         .copy-toast {
             position: fixed;
             bottom: 60px;
@@ -361,10 +459,22 @@
             </div>
             <div id="sandboxWrapper" class="hidden animate" style="margin-top: 16px;">
                 <div
-                    style="font-size: 10px; font-weight: 800; color: var(--secondary); margin-bottom: 6px; text-transform: uppercase;">
-                    Sandbox Preview</div>
-                <div id="sandboxContent"
-                    style="background: white; border: 2px dashed var(--border); border-radius: 12px; padding: 12px; max-height: 200px; overflow: auto; cursor: crosshair;">
+                    style="font-size: 10px; font-weight: 800; color: var(--secondary); margin-bottom: 8px; text-transform: uppercase;">
+                    Interactive UI Layout Grid</div>
+
+                <!-- Hidden visual content for internal processing, but Grid is the primary view -->
+                <div id="sandboxContent" class="hidden"></div>
+
+                <div id="sandboxGrid" class="ag-style-grid" style="max-height: 400px; overflow-y: auto;">
+                    <div class="ag-grid-header">
+                        <div class="ag-header-cell" style="width: 50px;">ID</div>
+                        <div class="ag-header-cell" style="flex: 1.2;">Type & Role <span
+                                style="font-size: 8px; margin-left: auto; opacity: 0.5;">▼</span></div>
+                        <div class="ag-header-cell" style="flex: 2;">Content & Text</div>
+                        <div class="ag-header-cell" style="flex: 2;">Best Locator Strategy</div>
+                        <div class="ag-header-cell" style="width: 90px; text-align: center;">Status</div>
+                    </div>
+                    <div id="sandboxGridBody"></div>
                 </div>
             </div>
         </div>
@@ -380,55 +490,27 @@
                 </div>
             </div>
 
-            <div class="section-box">
-                <div class="section-title">Playwright Native</div>
-                <div class="locator-list">
-                    <div class="locator-row">
-                        <span class="locator-type">getByRole</span>
-                        <span class="locator-val" id="getByRole">-</span>
-                        <button class="copy-btn copy-item" data-id="getByRole">📋</button>
+            <div class="section-box" style="margin-top: 16px;">
+                <div class="section-title">
+                    <span>Generated Locators</span>
+                    <span style="font-size: 9px; opacity: 0.7;">AG-GRID STYLE</span>
+                </div>
+                <div class="ag-style-grid">
+                    <div class="ag-grid-header">
+                        <div class="ag-header-cell ag-cell-method">Method</div>
+                        <div class="ag-header-cell ag-cell-value">Locator / Strategy</div>
+                        <div class="ag-header-cell ag-cell-action">Copy</div>
                     </div>
-                    <div class="locator-row">
-                        <span class="locator-type">getByText</span>
-                        <span class="locator-val" id="getByText">-</span>
-                        <button class="copy-btn copy-item" data-id="getByText">📋</button>
-                    </div>
-                    <div class="locator-row">
-                        <span class="locator-type">getByTestId</span>
-                        <span class="locator-val" id="getByTestId">-</span>
-                        <button class="copy-btn copy-item" data-id="getByTestId">📋</button>
-                    </div>
-                    <div class="locator-row">
-                        <span class="locator-type">getByLabel</span>
-                        <span class="locator-val" id="getByLabel">-</span>
-                        <button class="copy-btn copy-item" data-id="getByLabel">📋</button>
-                    </div>
-                    <div class="locator-row">
-                        <span class="locator-type">getByPlaceholder</span>
-                        <span class="locator-val" id="getByPlaceholder">-</span>
-                        <button class="copy-btn copy-item" data-id="getByPlaceholder">📋</button>
+                    <div id="unifiedGridBody">
+                        <!-- Content will be injected dynamically by updateUI -->
                     </div>
                 </div>
             </div>
 
-            <div class="section-box">
-                <div class="section-title">Traditional</div>
-                <div class="locator-list">
-                    <div class="locator-row">
-                        <span class="locator-type">CSS</span>
-                        <span class="locator-val" id="cssLocator">-</span>
-                        <button class="copy-btn copy-item" data-id="cssLocator">📋</button>
-                    </div>
-                    <div class="locator-row">
-                        <span class="locator-type">XPath</span>
-                        <span class="locator-val" id="xpathLocator">-</span>
-                        <button class="copy-btn copy-item" data-id="xpathLocator">📋</button>
-                    </div>
-                </div>
-            </div>
+
 
             <div id="aiResults" class="hidden animate"
-                style="display: flex; flex-direction: column; gap: 10px; margin-top: 10px;"></div>
+                style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;"></div>
 
             <div class="code-area">
                 <div class="lang-switch">
@@ -449,9 +531,12 @@
     </div>
 
     <footer class="page-footer">
-        <div class="status-pill">
-            <div style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></div>
-            <span id="statusText">System Ready</span>
+        <div style="display: flex; gap: 12px;">
+            <div class="status-pill" id="systemStatus">
+                <div style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></div>
+                <span id="statusText">System Ready</span>
+            </div>
+
         </div>
         <div>v3.1.0 PRO</div>
     </footer>
@@ -478,7 +563,8 @@
 
     <div id="copyToast" class="copy-toast">Copied to clipboard!</div>
     <script src="framework-locators.js"></script>
-    <script src="overlay-support.js"></script>
+    <script src="ai-service.js"></script>
+    <script src="picker-scripts.js"></script>
     <script src="devtools-panel.js"></script>
 </body>
 

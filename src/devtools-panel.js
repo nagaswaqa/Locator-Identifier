@@ -5,11 +5,15 @@ let selectedElement = null;
 let pollingInterval = null;
 let overrideStrategy = null;
 
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     updateStatus('[v4.0] Ready to inspect elements...');
+
 });
+
+
 
 function setupEventListeners() {
     // Tab Switching
@@ -116,27 +120,62 @@ function processPastedDOM() {
 
     const sandbox = document.getElementById('sandboxContent');
     const wrapper = document.getElementById('sandboxWrapper');
+    const gridBody = document.getElementById('sandboxGridBody');
 
     sandbox.innerHTML = html;
     wrapper.classList.remove('hidden');
-    updateStatus('DOM Rendered. Click an element in the preview to inspect.');
 
-    // Add click listeners to all elements in sandbox
+    // Clear previous grid
+    gridBody.innerHTML = '';
+    updateStatus('DOM Captured. Select a row below for deep analysis.');
+
+    const getUIIcon = (t) => {
+        const icons = {
+            'div': '📦', 'header': '📦', 'footer': '📦', 'section': '📦',
+            'span': '📑', 'p': '📑', 'label': '📑', 'button': '🔘', 'a': '🔗',
+            'input': '🔡', 'textarea': '🔡', 'select': '🔡', 'img': '🖼️', 'svg': '🎨',
+            'ul': '📝', 'li': '🔹', 'table': '📊', 'tr': '➖', 'td': '▫️'
+        };
+        return icons[t] || '📄';
+    };
+
     const allElements = sandbox.querySelectorAll('*');
+    let rowIdx = 101; // Match screenshot starting ID
+
     allElements.forEach(el => {
-        el.style.outline = '1px dashed transparent';
-        el.onmouseover = (e) => {
-            e.stopPropagation();
-            el.style.outline = '2px solid var(--primary)';
-        };
-        el.onmouseout = (e) => {
-            el.style.outline = '1px dashed transparent';
-        };
-        el.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'script' || tag === 'style') return;
+
+        // Skip container-only elements to keep it flat and meaningful
+        if (el.children.length > 0 && el.textContent.trim() === "") return;
+
+        const text = el.textContent?.trim().substring(0, 50) || '';
+        const idAttr = el.id || el.getAttribute('data-testid') || el.getAttribute('data-nexus-id') || '';
+        const data = extractElementData(el);
+        const best = getBestLocator(data);
+        const isStable = idAttr || (text && text.length > 5 && !isDynamic(text));
+
+        const row = document.createElement('div');
+        row.className = 'ag-grid-row';
+        row.style.minHeight = '44px';
+        row.onclick = () => {
             inspectLocalElement(el);
+            document.querySelectorAll('#sandboxGridBody .ag-grid-row').forEach(r => r.style.borderLeft = 'none');
+            row.style.borderLeft = '4px solid var(--primary)';
         };
+
+        row.innerHTML = `
+            <div class="ag-grid-cell" style="width: 50px; color: #64748b; font-weight: 600;">${rowIdx++}</div>
+            <div class="ag-grid-cell" style="flex: 1.2;">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: var(--primary);">${tag}</span>
+            </div>
+            <div class="ag-grid-cell" style="flex: 2; font-size: 12px; color: #1e293b;">${text ? '"' + text + '"' : (idAttr ? '#' + idAttr : '-')}</div>
+            <div class="ag-grid-cell" style="flex: 2; font-family: monospace; font-size: 10px; color: #475569;">${best.method}(${String(best.value || '').substring(0, 20)}...)</div>
+            <div class="ag-grid-cell" style="width: 90px; justify-content: flex-start; font-size: 11px; font-weight: 600; color: ${isStable ? '#10b981' : '#ef4444'}">
+                <span style="margin-right: 6px; font-size: 12px;">●</span> ${isStable ? 'Active' : 'Pending'}
+            </div>
+        `;
+        gridBody.appendChild(row);
     });
 }
 
@@ -160,203 +199,56 @@ function inspectLocalElement(el) {
 
 function startElementPicker() {
     const btn = document.getElementById('toggleInspect');
-    
-    // Get simplified picker code
-    const pickerCode = getSimplifiedPickerCode();
-    
-    chrome.devtools.inspectedWindow.eval(pickerCode, (result, error) => {
-        handlePickerResult(result, error, btn);
+    if (btn.disabled) return;
+    btn.disabled = true;
+
+    // Get simplified picker code from global helper and APPEND extraction functions
+    // This allows the element to be stringified INSIDE its own frame (crucial for iframes)
+    const baseCode = window.PickerScripts ? window.PickerScripts.getSimplifiedPickerCode() : getSimplifiedPickerCodeBackup();
+    const pickerCode = getExtractionFunctions() + "\n" + baseCode;
+
+    // Use background service worker to inject into ALL frames (essential for cross-origin iframes)
+    const tabId = chrome.devtools.inspectedWindow.tabId;
+
+    chrome.runtime.sendMessage({
+        type: 'INJECT_PICKER',
+        tabId: tabId,
+        code: 'window.__pwIgnoreIframes = true;\n' + pickerCode
+    }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) {
+            console.error('Multi-frame injection failed, falling back to main frame only:', chrome.runtime.lastError || response?.error);
+            // Fallback to traditional eval (main frame only)
+            chrome.devtools.inspectedWindow.eval(pickerCode, (result, error) => {
+                handlePickerResult(result, error, btn);
+            });
+        } else {
+            // Background injection succeeded in all frames
+            handlePickerResult('started', null, btn);
+        }
     });
 }
 
 /**
- * Simplified picker code for better reliability
+ * Backup picker code only if external script fails to load
  */
-function getSimplifiedPickerCode() {
-    return `
-        (function() {
-            try {
-                // Force cleanup of any old state
-                if (window.__pwPickerCleanup) {
-                    window.__pwPickerCleanup();
-                    return 'cancelled';
-                }
-                // Remove old highlight
-                try {
-                    const oldHighlight = document.getElementById('__pw-highlight');
-                    if (oldHighlight) oldHighlight.remove();
-                } catch(e) {}
-                
-                // Create highlight element
-                const highlight = document.createElement('div');
-                highlight.id = '__pw-highlight';
-                
-                // Apply styles safely (avoid cssText issues)
-                highlight.style.position = 'fixed';
-                highlight.style.border = '3px solid #6366f1';
-                highlight.style.background = 'rgba(99, 102, 241, 0.15)';
-                highlight.style.pointerEvents = 'none';
-                highlight.style.display = 'none';
-                highlight.style.zIndex = '2147483647';
-                highlight.style.boxShadow = '0 0 15px rgba(99, 102, 241, 0.5), inset 0 0 0 1px rgba(99, 102, 241, 0.3)';
-                highlight.style.borderRadius = '6px';
-                highlight.style.transition = 'all 0.08s ease-out';
-                highlight.style.backfaceVisibility = 'hidden';
-                
-                // Append to body or documentElement
-                const target = document.body || document.documentElement;
-                if (!target) throw new Error('No valid DOM target found');
-                
-                target.appendChild(highlight);
-                
-                let hoveredElement = null;
-                
-                // Simplified overlay detection (more reliable)
-                function isSimpleOverlay(el) {
-                    if (!el || el === highlight) return false;
-                    const tag = el.tagName.toLowerCase();
-                    if (tag === 'body' || tag === 'html') return false;
-                    
-                    const cls = (el.className || '').toLowerCase();
-                    const id = (el.id || '').toLowerCase();
-                    
-                    // Check for overlay keywords
-                    const overlayKeywords = ['overlay', 'backdrop', 'modal', 'dialog', 'tooltip', 'popover', 'dropdown', 'scrim'];
-                    return overlayKeywords.some(kw => cls.includes(kw) || id.includes(kw));
-                }
-                
-                // Simplified element detection
-                function getElementAtPoint(x, y) {
-                    try {
-                        let element = document.elementFromPoint(x, y);
-                        
-                        // Skip overlay if detected
-                        if (element && isSimpleOverlay(element)) {
-                            try {
-                                const saved = element.style.pointerEvents;
-                                element.style.pointerEvents = 'none';
-                                const next = document.elementFromPoint(x, y);
-                                if (next && !isSimpleOverlay(next)) {
-                                    element = next;
-                                } else {
-                                    element.style.pointerEvents = saved;
-                                }
-                            } catch(e) {}
-                        }
-                        
-                        // Check iframe
-                        if (element && element.tagName === 'IFRAME') {
-                            try {
-                                const rect = element.getBoundingClientRect();
-                                const innerElement = element.contentDocument.elementFromPoint(x - rect.left, y - rect.top);
-                                if (innerElement) {
-                                    innerElement.__pwFrameContext = element;
-                                    return innerElement;
-                                }
-                            } catch (e) {}
-                        }
-                        
-                        // Check shadow DOM
-                        try {
-                            while (element && element.shadowRoot) {
-                                const shadowElement = element.shadowRoot.elementFromPoint(x, y);
-                                if (shadowElement) {
-                                    element = shadowElement;
-                                } else {
-                                    break;
-                                }
-                            }
-                        } catch(e) {}
-                        
-                        return element;
-                    } catch(e) {
-                        return null;
-                    }
-                }
-                
-                // Update highlight box
-                function updateHighlight(e) {
-                    try {
-                        const el = getElementAtPoint(e.clientX, e.clientY);
-                        if (el && el !== highlight && el.tagName !== 'HTML' && el.tagName !== 'BODY') {
-                            hoveredElement = el;
-                            const rect = el.getBoundingClientRect();
-                            highlight.style.display = 'block';
-                            highlight.style.top = rect.top + 'px';
-                            highlight.style.left = rect.left + 'px';
-                            highlight.style.width = rect.width + 'px';
-                            highlight.style.height = rect.height + 'px';
-                        }
-                    } catch(e) {
-                        console.error('Highlight update error:', e);
-                    }
-                }
-                
-                // Select element on click
-                function selectElement(e) {
-                    try {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    } catch(e) {}
-                    
-                    if (hoveredElement) {
-                        window.__pwSelectedElement = hoveredElement;
-                    }
-                    window.__pwPickerCleanup();
-                }
-                
-                // Cleanup function
-                window.__pwPickerCleanup = function() {
-                    try {
-                        document.removeEventListener('mousemove', updateHighlight, true);
-                    } catch(e) {}
-                    try {
-                        document.removeEventListener('click', selectElement, true);
-                    } catch(e) {}
-                    try {
-                        if (document.body) document.body.style.cursor = '';
-                    } catch(e) {}
-                    try {
-                        if (highlight) highlight.remove();
-                    } catch(e) {}
-                    try {
-                        delete window.__pwPickerCleanup;
-                        delete window.__pwPickerActive;
-                    } catch(e) {}
-                };
-                
-                // Setup event listeners
-                try {
-                    document.addEventListener('mousemove', updateHighlight, true);
-                    document.addEventListener('click', selectElement, true);
-                    if (document.body) document.body.style.cursor = 'crosshair';
-                } catch(e) {
-                    throw new Error('Failed to setup event listeners: ' + e.message);
-                }
-                
-                window.__pwPickerActive = true;
-                return 'started';
-                
-            } catch(e) {
-                return { error: e.message, type: 'picker_init' };
-            }
-        })();
-    `;
+function getSimplifiedPickerCodeBackup() {
+    return window.PickerScripts && window.PickerScripts.getSimplifiedPickerCode ? window.PickerScripts.getSimplifiedPickerCode() : '';
 }
 
 /**
  * Handle picker result with detailed error reporting
  */
 function handlePickerResult(result, error, btn) {
+    btn.disabled = false;
     if (error) {
         console.error('Picker eval error:', error);
         updateStatus('⚠️ Picker init failed - trying fallback...');
-        
+
         // Try fallback after a short delay
         setTimeout(() => startFallbackPicker(btn), 500);
         return;
     }
-    
+
     if (result && result.error) {
         // Error occurred in injected code
         console.error('Picker error:', result.error, 'Type:', result.type);
@@ -365,7 +257,7 @@ function handlePickerResult(result, error, btn) {
         stopPolling();
         return;
     }
-    
+
     if (result === 'started') {
         updateStatus('✓ Click element to inspect (Esc to cancel)');
         btn.innerHTML = '<span>⏹</span> Cancel';
@@ -387,7 +279,7 @@ function handlePickerResult(result, error, btn) {
  */
 function startFallbackPicker(btn) {
     console.log('Starting fallback picker mechanism...');
-    
+
     const fallbackCode = `
         (function() {
             try {
@@ -405,7 +297,7 @@ function startFallbackPicker(btn) {
             }
         })();
     `;
-    
+
     chrome.devtools.inspectedWindow.eval(fallbackCode, (result, error) => {
         if (error || (result && result.error)) {
             console.error('Fallback failed:', error || result.error);
@@ -413,7 +305,7 @@ function startFallbackPicker(btn) {
             showPickerUnavailableUI(btn);
             return;
         }
-        
+
         if (result === 'fallback-started') {
             updateStatus('Fallback mode: Use DevTools Elements panel');
             btn.innerHTML = '<span>ℹ️</span> Use DevTools';
@@ -430,7 +322,7 @@ function showPickerUnavailableUI(btn) {
     btn.innerHTML = '<span>⚠️</span> Picker Unavailable';
     btn.style.opacity = '0.6';
     btn.disabled = true;
-    
+
     // Log help text to console
     console.group('%cPlaywright Locator Inspector', 'color: #6366f1; font-weight: bold; font-size: 12px');
     console.log('%cPicker unavailable on this page.', 'color: #dc2626');
@@ -439,7 +331,7 @@ function showPickerUnavailableUI(btn) {
     console.log('2. Paste HTML in "Paste DOM" tab → Click elements in preview');
     console.log('3. Generate locators manually using the panel');
     console.groupEnd();
-    
+
     // Show help in panel status
     updateStatus('Use DevTools Elements panel to inspect elements');
 }
@@ -453,6 +345,10 @@ function startPolling() {
                     if (window.__pwSelectedElement) {
                         const el = window.__pwSelectedElement;
                         delete window.__pwSelectedElement;
+                        
+                        // If it's already an extracted data object (from an iframe selection)
+                        if (el.tag && !el.tagName) return el;
+                        
                         ` + getExtractionFunctions() + `
                         return extractElementData(el);
                     }
@@ -470,8 +366,8 @@ function startPolling() {
             if (result && result.error) {
                 updateStatus('Inspection error: ' + result.error);
                 stopPolling();
-                // Remote cleanup
-                chrome.devtools.inspectedWindow.eval('if(window.__pwPickerCleanup) window.__pwPickerCleanup();');
+                // Remote cleanup ALL frames
+                chrome.runtime.sendMessage({ type: 'CLEANUP_PICKER', tabId: chrome.devtools.inspectedWindow.tabId });
                 document.getElementById('toggleInspect').innerHTML = '<span>🎯</span> Inspect Page';
                 return;
             }
@@ -492,6 +388,8 @@ function startPolling() {
 function stopPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
     pollingInterval = null;
+    // Perform multi-frame cleanup
+    chrome.runtime.sendMessage({ type: 'CLEANUP_PICKER', tabId: chrome.devtools.inspectedWindow.tabId });
 }
 
 function extractLocatorsFromSelectedElement() {
@@ -529,6 +427,7 @@ function getExtractionFunctions() {
         extractElementData,
         isUnique,
         isDynamic,
+        getStableText,
         generateGetByRole,
         getImplicitRole,
         generateGetByText,
@@ -547,6 +446,8 @@ function getExtractionFunctions() {
         getGlobalIndex,
         escapeXPathText,
         getPaddedXPathSegment,
+        isGenericTag,
+        isWeakLocator,
         // Framework detection functions
         detectFrameworkLocators,
         detectFramework,
@@ -558,7 +459,8 @@ function getExtractionFunctions() {
         generateFrameworkCode,
         generateDevExpressCode,
         generateAGGridCode,
-        generateNexusCode
+        generateNexusCode,
+        getElementXPathIndex
     ];
     return functions.map(f => f.toString()).join('\n');
 }
@@ -606,7 +508,25 @@ function extractElementData(element) {
     }
 
     // Framework-specific detection
-    const frameworkLocators = detectFrameworkLocators(element);
+    let frameworkLocators = {};
+    try {
+        frameworkLocators = detectFrameworkLocators(element);
+    } catch (e) {
+        console.warn('Framework detection failed:', e);
+    }
+
+    // Check for frame context
+    let frameInfo = null;
+    if (element.__pwFrameContext || (element.ownerDocument !== document)) {
+        const frame = element.__pwFrameContext || Array.from(document.querySelectorAll('iframe')).find(f => f.contentDocument === element.ownerDocument);
+        if (frame) {
+            frameInfo = {
+                id: frame.id,
+                name: frame.name,
+                selector: generateCSSSelector(frame)
+            };
+        }
+    }
 
     const data = {
         tag: element.tagName.toLowerCase(),
@@ -624,7 +544,8 @@ function extractElementData(element) {
         framework: frameworkLocators.framework,
         devExpress: frameworkLocators.devExpress,
         agGrid: frameworkLocators.agGrid,
-        nexus: frameworkLocators.nexus
+        nexus: frameworkLocators.nexus,
+        frame: frameInfo
     };
     return data;
 }
@@ -653,34 +574,152 @@ function isUnique(selector, type, el) {
         }
 
         return false;
-    } catch (e) {
-        return false;
+    } catch (e) { return false; }
+}
+
+function getElementXPathIndex(selector, el) {
+    try {
+        const doc = el.ownerDocument || document;
+        const context = window.__pwContext || doc;
+        const xp = (window.__pwContext && selector.startsWith('//')) ? '.' + selector : selector;
+        const res = doc.evaluate(xp, context, null, 7, null);
+        for (let i = 0; i < res.snapshotLength; i++) {
+            if (res.snapshotItem(i) === el) return i + 1;
+        }
+    } catch (e) { }
+    return 1;
+}
+
+function getStableText(text) {
+    if (!text || typeof text !== 'string') return null;
+
+    // 1. First check if it's a known framework/ID pattern (those are usually not salvageable)
+    const frameworkPatterns = [/[a-f0-9]{8,}/i, /^(ember|ng-|jss|css-|_-|sc-|Mui|v-|dx-|ag-)/i];
+    if (frameworkPatterns.some(p => p.test(text))) return null;
+
+    // 2. Search for dynamic patterns and remove them
+    const dynamicPatterns = [
+        /[0-9]{5,}/,
+        /^[0-9]+$/,
+        /[a-f0-9]{8,}/i,
+        /^(ember|ng-|jss|css-|_-|sc-|Mui|v-|dx-|ag-)/i,
+        /(_ngcontent|_nghost)/,
+        /^[a-z]-[0-9]+$/i,
+        /[_-][a-z0-9]{5,}$/i,
+        /\[#[a-f0-9]{6}\]/i,
+        /\.[0-9]{1,}/,
+        /[0-9]{5,}/g,                       // Long numeric sequences
+        /^[0-9]+$/g,                        // Purely numeric
+        /[a-f0-9]{8,}/gi,                   // GUID-like hex strings
+        /^(ember|ng-|jss|css-|_-|sc-|Mui|v-|dx-|ag-)/gi, // Framework prefixes
+        /(_ngcontent|_nghost)/g,            // Angular internal
+        /^[a-z]-[0-9]+$/gi,                 // Simple dynamic IDs
+        /[_-][a-z0-9]{5,}$/gi,              // Common random suffixes
+        /\[#[a-f0-9]{6}\]/gi,                // Tailwind
+        /\.[0-9]{1,}/g,                     // Fractional numbers
+        // --- EXPERT PATTERNS ---
+        /[0-9]+(\.[0-9]+)?(\s*)?[KMBkmb](\+)?(\s|$)/gi, // Metrics
+        /[0-9]+(\.[0-9]+)?%/g,               // Percentages
+        /[\$\£\€\¥\₹]\s?[0-9]/g,             // Prices (Symbol first)
+        /[0-9]\s?[\$\£\€\¥\₹]/g,             // Prices (Symbol last)
+        /\b(ago|today|yesterday|tomorrow)\b/gi, // Relative time
+        /[0-9]+\s+(min|hour|day|week|month|year)/gi, // Time periods
+        /[0-9]{1,2}:[0-9]{2}/g,              // Timestamps
+        /\b[0-9]{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/gi, // Dates
+        /\b(19|20)[0-9]{2}\b/g,                // Years
+        /[0-9]+/g                              // Any remaining digits
+    ];
+
+    let currentText = text.replace(/\s+/g, ' ').trim();
+    const delimiter = '|||SEP|||';
+
+    // Create a version with all dynamic parts replaced by delimiters
+    let delimited = currentText;
+    dynamicPatterns.forEach(p => {
+        // Use global regex to catch all instances
+        const regex = p.global ? p : new RegExp(p.source, p.flags + 'g');
+        delimited = delimited.replace(regex, delimiter);
+    });
+
+    // Split by delimiter and filter for stable chunks
+    const chunks = delimited.split(delimiter)
+        .map(c => c.trim())
+        .filter(c => {
+            if (!c || c.length < 3) return false;
+            // Additional check: must not be just punctuation or short prepositions
+            if (/^[.,!?;:()\[\]{}]+$/.test(c)) return false;
+            return true;
+        });
+
+    if (chunks.length === 0) return null;
+
+    // Pick the best segment:
+    // 1. If the first segment is decent length (> 5), use it (contextual anchor)
+    // 2. Otherwise pick the longest segment
+    let best = chunks[0];
+    if (best.length < 6) {
+        chunks.forEach(c => {
+            if (c.length > best.length) best = c;
+        });
     }
+
+    // Post-processing on the chosen segment
+    let stable = best.replace(/[\?\.\!\,]+$/, '').trim();
+    stable = stable.replace(/\b(in|at|on|for|with|by|to|of|and|the|a|an)$/i, '').trim();
+
+    // Final verify: must be significant and contain letters
+    if (stable.length >= 4 && /[a-zA-Z]/.test(stable)) return stable;
+    return null;
 }
 
 function isDynamic(val) {
-    if (!val) return false;
+    if (!val || typeof val !== 'string') return false;
 
-    // Bypass if it's a stable-looking word (e.g., polling-window)
-    // Random suffixes usually contain numbers or have high entropy.
-    // If a suffix is all-alpha and short, don't treat it as dynamic.
-    const suffixMatch = val.match(/[_-]([a-z0-9]{3,6})$/i);
-    if (suffixMatch) {
-        const suffix = suffixMatch[1];
-        if (!/[0-9]/.test(suffix) && suffix.length < 10) return false;
-    }
+    // Regular stable words bypass
+    const stableWords = ['button', 'input', 'select', 'modal', 'dialog', 'header', 'footer', 'submit', 'cancel', 'save', 'close'];
+    if (stableWords.includes(val.toLowerCase())) return false;
+
+    // Expert change: If it has ANY digits or matches expert patterns, consider it dynamic for exact matching
+    if (/\d/.test(val)) return true;
 
     const dynamicPatterns = [
         /[0-9]{5,}/,                       // Long numeric sequences
         /^[0-9]+$/,                        // Purely numeric
         /[a-f0-9]{8,}/i,                   // GUID-like hex strings
-        /^(ember|ng-|jss|css-|_-|sc-|Mui|v-)/i, // Framework prefixes
-        /(_ngcontent|_nghost)/,            // Angular internal attributes
+        /^(ember|ng-|jss|css-|_-|sc-|Mui|v-|dx-|ag-)/i, // Framework prefixes
+        /(_ngcontent|_nghost)/,            // Angular internal
         /^[a-z]-[0-9]+$/i,                 // Simple dynamic IDs
-        /[_-][a-z0-9]{5,6}$/i               // Common random suffixes
+        /[_-][a-z0-9]{5,}$/i,              // Common random suffixes
+        /\[#[a-f0-9]{6}\]/i                 // Tailwind
     ];
 
     return dynamicPatterns.some(p => p.test(val));
+}
+
+function isGenericTag(tag) {
+    const genericTags = ['div', 'span', 'p', 'a', 'i', 'b', 'svg', 'path', 'section', 'article', 'li', 'ul', 'ol', 'nav', 'header', 'footer', 'main', 'aside', 'details', 'summary'];
+    return genericTags.includes(tag.toLowerCase());
+}
+
+function isWeakLocator(selector, type, el) {
+    if (!selector) return true;
+
+    // If it has a stable attribute (id, testid, etc), it's not weak
+    if (selector.includes('[@id=') || selector.includes('[data-testid=') || selector.includes('[name=') || selector.includes('[role=') || selector.includes('[@role=')) {
+        return false;
+    }
+
+    if (type === 'xpath') {
+        // Weak if it's just //tag or //tag[index]
+        return /^\/\/[a-z]+(\[([0-9]+|normalize-space\(\.\)=.*)\])?$/i.test(selector);
+    }
+
+    if (type === 'css') {
+        // Weak if it's just tag or tag:nth-of-type(n)
+        return /^[a-z]+(:nth-of-type\([0-9]+\))?$/i.test(selector);
+    }
+
+    return false;
 }
 
 function generateGetByRole(el) {
@@ -712,7 +751,7 @@ function getImplicitRole(el) {
 
 function generateGetByText(el) {
     const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 60) return text;
+    if (text && text.length > 0 && text.length < 60 && !isDynamic(text)) return text;
     return null;
 }
 
@@ -732,11 +771,13 @@ function generateGetByPlaceholder(el) { return el.getAttribute('placeholder'); }
 function generateGetByAltText(el) { return el.getAttribute('alt'); }
 function generateGetByTestId(el) {
     return el.getAttribute('data-testid') ||
+        el.getAttribute('data-nexus-id') ||
         el.getAttribute('data-test-id') ||
         el.getAttribute('test-id') ||
         el.getAttribute('data-automation-id') ||
         el.getAttribute('automation-id') ||
-        el.getAttribute('data-cy');
+        el.getAttribute('data-cy') ||
+        el.getAttribute('data-component');
 }
 
 function generateCSSSelector(el) {
@@ -775,23 +816,27 @@ function generateCSSSelector(el) {
         curr = curr.parentNode;
     }
     let fullSelector = path.join(' > ');
-    if (isUnique(fullSelector, 'css')) return fullSelector;
+    if (isUnique(fullSelector, 'css') && !isWeakLocator(fullSelector, 'css', el)) return fullSelector;
 
-    // Fallback: If not unique, add nth-of-type indices starting from the target element
+    // Fallback: If not unique OR weak, add parent context or nth-of-type
     curr = el;
+    let fallback = null;
     for (let i = path.length - 1; i >= 0; i--) {
         const index = getElementIndex(curr);
         // Add index to specific segment
         path[i] += `:nth-of-type(${index})`;
 
         fullSelector = path.join(' > ');
-        if (isUnique(fullSelector, 'css')) return fullSelector;
+        if (isUnique(fullSelector, 'css')) {
+            if (!isWeakLocator(fullSelector, 'css', el)) return fullSelector;
+            if (!fallback) fallback = fullSelector;
+        }
 
         curr = curr.parentNode;
         if (!curr || curr.nodeType !== Node.ELEMENT_NODE) break;
     }
 
-    return fullSelector;
+    return fallback || fullSelector;
 }
 
 function escapeXPathText(text) {
@@ -822,9 +867,21 @@ function generateXPathWithDepth(el, maxDepth, deepMode) {
 
     // Priority 2: Unique Text on element itself
     if (text && text.length > 0 && text.length < 50) {
-        const escaped = escapeXPathText(text);
-        const xp = "//" + tag + "[normalize-space(.)=" + escaped + "]";
-        if (isUnique(xp, 'xpath', el)) return xp;
+        const stable = getStableText(text);
+        if (stable) {
+            const escaped = escapeXPathText(stable);
+            const xpBase = "//" + tag + "[contains(normalize-space(.), " + escaped + ")]";
+            if (isUnique(xpBase, 'xpath', el)) return xpBase;
+
+            // Disambiguate if needed
+            const idx = getElementXPathIndex(xpBase, el);
+            const indexedXp = `(${xpBase})[${idx}]`;
+            if (isUnique(indexedXp, 'xpath', el)) return indexedXp;
+        } else if (!isDynamic(text)) {
+            const escaped = escapeXPathText(text);
+            const xp = "//" + tag + "[normalize-space(.)=" + escaped + "]";
+            if (isUnique(xp, 'xpath', el)) return xp;
+        }
     }
 
     // Priority 3: Parent Anchoring & Path Building
@@ -840,25 +897,50 @@ function generateXPathWithDepth(el, maxDepth, deepMode) {
 
         // Check if current direct path is unique
         const directPath = "//" + path.join("/");
-        if (isUnique(directPath, 'xpath', el)) return directPath;
+        if (isUnique(directPath, 'xpath', el)) {
+            // FIX for GENERIC TAGS (e.g., <path>, <svg>, <div>):
+            // Even if unique, avoid returning a bare locator like "//path" or "//div[2]"
+            // unless it has a strong ID or test-id.
+            const isGeneric = (current === el) && isGenericTag(el.tagName);
+            const hasStrongAttr = el.id || el.getAttribute('data-testid') || el.getAttribute('name');
 
-        // Strategy D (Moved to Priority 1): Check if the ancestor itself has unique text content
-        // This prioritizes descriptive text-based locators (like "Read more" in a paragraph)
-        let ancestorText = current.textContent?.trim();
-        if (ancestorText) {
-            ancestorText = ancestorText.replace(/\s+/g, ' ');
-            if (ancestorText.length > 5 && ancestorText.length < 1000) {
-                const escaped = escapeXPathText(ancestorText);
-                const containerSeg = current.tagName.toLowerCase() + "[contains(normalize-space(.), " + escaped + ")]";
+            if (!isGeneric || hasStrongAttr || path.length > 2) {
+                return directPath;
+            }
+            // If generic and no strong attr, we CONTINUING climbing to find a better anchor
+        }
 
-                // Use text-enriched target segment if available
-                const targetSeg = getPaddedXPathSegment(el);
-                const deepXp = "//" + containerSeg + "//" + targetSeg;
-                if (isUnique(deepXp, 'xpath', el)) return deepXp;
+        // New Strategy: Ancestor text anchoring
+        let ancestorCursor = current;
+        let ancestorDepth = 0;
+        while (ancestorCursor.parentElement && ancestorDepth < 3) { // Limit ancestor search depth
+            ancestorCursor = ancestorCursor.parentElement;
+            ancestorDepth++;
+            const tagName = ancestorCursor.tagName.toLowerCase();
+            if (tagName === 'body' || tagName === 'html') break;
 
-                if (path.length > 1) {
-                    const directXp = "//" + containerSeg + "/" + path.slice(1).join('/');
-                    if (isUnique(directXp, 'xpath', el)) return directXp;
+            let ancestorText = ancestorCursor.textContent?.trim();
+            if (ancestorText) {
+                const stable = getStableText(ancestorText);
+                if (stable) {
+                    const escaped = escapeXPathText(stable);
+                    let containerSeg;
+                    if (stable === ancestorText.replace(/\s+/g, ' ').trim()) {
+                        containerSeg = tagName + "[normalize-space(.)=" + escaped + "]";
+                    } else {
+                        containerSeg = tagName + "[contains(normalize-space(.), " + escaped + ")]";
+                    }
+
+                    // Build path from ancestor to target element
+                    let relativePathFromAncestor = [];
+                    let tempEl = el;
+                    while (tempEl && tempEl !== ancestorCursor) {
+                        relativePathFromAncestor.unshift(getXPathSegment(tempEl, deepMode));
+                        tempEl = tempEl.parentElement;
+                    }
+
+                    const testXp = "//" + containerSeg + (relativePathFromAncestor.length ? "//" + relativePathFromAncestor.join('//') : "");
+                    if (isUnique(testXp, 'xpath', el)) return testXp;
                 }
             }
         }
@@ -884,22 +966,22 @@ function generateXPathWithDepth(el, maxDepth, deepMode) {
             if (isUnique(anchoredXp, 'xpath', el)) return anchoredXp;
         }
 
-        // Strategy C: Parent differentiator using contains() predicate
-        if (current.childElementCount < 100) {
-            const targets = current.querySelectorAll('h1, h2, h3, h4, h5, h6, b, strong, label, p, span, .title, .name, .price, .sku');
-            let checks = 0;
-            for (const child of targets) {
-                if (checks++ > candidateLimit) break;
-                const txt = child.textContent?.trim();
-                // Increased length limit for paragraph text support
-                if (txt && txt.length > 2 && txt.length < 100) {
-                    if (isTextUnique(txt, child)) {
-                        const escaped = escapeXPathText(txt);
-                        const containerSeg = getXPathSegment(current, deepMode);
-                        const targetSeg = getPaddedXPathSegment(el);
-                        const xp = "//" + containerSeg + "[contains(normalize-space(.), " + escaped + ")]//" + targetSeg;
-                        if (isUnique(xp, 'xpath', el)) return xp;
-                    }
+        // Strategy C: Semantic Parent Anchoring (Headers, Labels)
+        if (current.childElementCount < 50) {
+            const semanticSelectors = 'h1, h2, h3, h4, h5, h6, label, .title, .header, .name';
+            const anchors = Array.from(current.querySelectorAll(semanticSelectors)).filter(a => a !== el);
+
+            for (const anchor of anchors) {
+                const txt = anchor.textContent?.trim();
+                if (txt && txt.length > 2 && txt.length < 60 && !isDynamic(txt)) {
+                    const escaped = escapeXPathText(txt);
+                    const anchorTag = anchor.tagName.toLowerCase();
+                    const containerTag = current.tagName.toLowerCase();
+                    const targetTag = el.tagName.toLowerCase();
+
+                    // Try exact match within anchor tag first
+                    const anchoredXp = `//${containerTag}[.//${anchorTag}[normalize-space(.)=${escaped}]]//${targetTag}`;
+                    if (isUnique(anchoredXp, 'xpath', el)) return anchoredXp;
                 }
             }
         }
@@ -907,6 +989,13 @@ function generateXPathWithDepth(el, maxDepth, deepMode) {
 
         current = current.parentElement;
         depth++;
+
+        // If we found a unique path but it's "weak" (just tags), 
+        // we keep climbing to find a "strong" anchor (with ID or Class)
+        const currentPath = "//" + path.join("/");
+        if (isUnique(currentPath, 'xpath', el)) {
+            if (!isWeakLocator(currentPath, 'xpath', el)) return currentPath;
+        }
     }
 
     // Final Fallback: Use all attributes but verify uniqueness
@@ -930,13 +1019,13 @@ function getXPathSegment(el, forceAllAttrs = false) {
     const tag = el.tagName.toLowerCase();
     let conditions = [];
 
-    // 1. Collect all stable attributes (Core XPath logic)
-    const attrs = ['id', 'data-testid', 'href', 'src', 'aria-label', 'name', 'title', 'role', 'placeholder', 'alt', 'type', 'value', 'aria-checked'];
+    // 1. Collect all stable attributes (Core XPath logic) - Prioritized Order
+    const attrs = ['data-testid', 'data-nexus-id', 'data-test-id', 'id', 'aria-label', 'name', 'title', 'role', 'placeholder', 'alt', 'type', 'value'];
     for (const attr of attrs) {
         const val = el.getAttribute(attr);
         if (val && !isDynamic(val)) {
             conditions.push("@" + attr + "='" + val + "'");
-            if (!forceAllAttrs && conditions.length >= 2) break;
+            if (!forceAllAttrs && conditions.length >= 1) break; // If we have a high-priority attr, stop early
         }
     }
 
@@ -958,10 +1047,19 @@ function getXPathSegment(el, forceAllAttrs = false) {
     // 2. Unique text (short)
     const text = el.textContent?.trim();
     if (text && text.length > 0 && text.length < 35) {
-        const textSeg = tag + "[normalize-space(.)=" + escapeXPathText(text) + "]";
-        const testXp = "//" + textSeg;
-        if (isUnique(testXp, 'xpath', el)) {
-            return textSeg;
+        const stable = getStableText(text);
+        if (stable) {
+            const xpBase = tag + "[contains(normalize-space(.), " + escapeXPathText(stable) + ")]";
+            const testXp = "//" + xpBase;
+            if (isUnique(testXp, 'xpath', el)) return xpBase;
+
+            // Disambiguate if needed
+            const idx = getElementXPathIndex(testXp, el);
+            return `(${xpBase})[${idx}]`;
+        } else if (!isDynamic(text)) {
+            const textSeg = tag + "[normalize-space(.)=" + escapeXPathText(text) + "]";
+            const testXp = "//" + textSeg;
+            if (isUnique(testXp, 'xpath', el)) return textSeg;
         }
     }
 
@@ -993,7 +1091,7 @@ function getPaddedXPathSegment(el) {
 
     // Attempt to append text if available
     const text = el.textContent?.trim();
-    if (text && text.length > 0 && text.length < 60) {
+    if (text && text.length > 0 && text.length < 60 && !isDynamic(text)) {
         const escaped = escapeXPathText(text);
         // Using normalize-space() for robustness
         const textPred = "[normalize-space()=" + escaped + "]";
@@ -1017,7 +1115,7 @@ function findUniqueAnchorTextInContainer(container) {
     const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6, b, strong, label, p, span, .title, .name, .poll-question-title__content, .content, .header, .label');
     for (const h of headings) {
         const txt = h.textContent?.trim();
-        if (txt && txt.length > 3 && txt.length < 100) {
+        if (txt && txt.length > 3 && txt.length < 100 && !isDynamic(txt)) {
             if (isTextUnique(txt, container)) return txt;
         }
     }
@@ -1027,7 +1125,7 @@ function findUniqueAnchorTextInContainer(container) {
     let n;
     while (n = walker.nextNode()) {
         const txt = n.textContent?.trim();
-        if (txt && txt.length > 3 && txt.length < 100) {
+        if (txt && txt.length > 3 && txt.length < 100 && !isDynamic(txt)) {
             if (isTextUnique(txt, container)) return txt;
         }
     }
@@ -1044,19 +1142,26 @@ function findNearestPrecedingUniqueText(el) {
 
     for (const h of preceding) {
         const txt = h.textContent?.trim();
-        if (txt && txt.length > 3 && txt.length < 80) {
-            const escaped = escapeXPathText(txt);
-            let anchorXp = "//*[normalize-space(.)=" + escaped + "]";
+        const stable = getStableText(txt);
+        if (stable) {
+            const escaped = escapeXPathText(stable);
+            let anchorXp;
+            if (stable === txt.replace(/\s+/g, ' ').trim()) {
+                anchorXp = "//*[normalize-space(.)=" + escaped + "]";
+            } else {
+                anchorXp = "//*[contains(normalize-space(.), " + escaped + ")]";
+            }
 
             if (isUnique(anchorXp, 'xpath', h)) {
-                return { text: txt, element: h, xpath: anchorXp };
+                return { text: txt, element: h, xpath: anchorXp, stable: stable };
             } else {
                 // Try parent-anchored text
                 let parent = h.parentElement;
                 let levels = 0;
                 while (parent && levels < 3) {
                     const seg = getXPathSegment(parent);
-                    anchorXp = "//" + seg + "//*[normalize-space(.)=" + escaped + "]";
+                    // Use contains for parent-anchored text as well
+                    anchorXp = "//" + seg + "//*[contains(normalize-space(.), " + escaped + ")]";
                     if (isUnique(anchorXp, 'xpath', h)) {
                         return { text: txt, element: h, xpath: anchorXp };
                     }
@@ -1094,46 +1199,73 @@ function updateUI(data) {
     overrideStrategy = null;
     document.getElementById('elementInfo').classList.remove('hidden');
 
-    const setVal = (id, val) => {
-        const el = document.getElementById(id);
-        const row = el?.closest('.locator-row');
-        if (el) {
-            if (id === 'getByRole' && val && val.includes('|')) {
-                el.textContent = val.split('|')[1] + ' (' + val.split('|')[0] + ')';
-            } else {
-                el.textContent = val || '-';
-            }
+    const gridBody = document.getElementById('unifiedGridBody');
+    gridBody.innerHTML = '';
+
+    const addRow = (method, value, type) => {
+        if (!value || value === '-') return;
+
+        // Extract string from objects (Framework locators)
+        if (typeof value === 'object') {
+            value = value.selector || value.nexus_id || value.dx_id || value.row_selector || JSON.stringify(value);
         }
-        if (row) {
-            row.style.opacity = val ? '1' : '0.4';
-        }
+
+        const row = document.createElement('div');
+        row.className = 'ag-grid-row';
+        row.style.minHeight = '44px';
+        row.onclick = () => {
+            overrideStrategy = { method, value, type };
+            updateCodeBlock();
+            document.querySelectorAll('#unifiedGridBody .ag-grid-row').forEach(r => r.style.borderLeft = 'none');
+            row.style.borderLeft = '4px solid var(--primary)';
+        };
+
+        const safeVal = String(value).replace(/"/g, '&quot;');
+        row.innerHTML = `
+            <div class="ag-grid-cell ag-cell-method" style="color: #1e293b; font-weight: 600;">${method}</div>
+            <div class="ag-grid-cell ag-cell-value ag-cell-mono" style="color: #475569;" title="${String(value)}">${String(value)}</div>
+            <div class="ag-grid-cell ag-cell-action">
+                <button class="copy-btn copy-item-grid" data-val="${safeVal}">📋</button>
+            </div>
+        `;
+        gridBody.appendChild(row);
     };
 
-    setVal('getByRole', data.getByRole);
-    setVal('getByText', data.getByText);
-    setVal('getByLabel', data.getByLabel);
-    setVal('getByPlaceholder', data.getByPlaceholder);
-    setVal('getByTestId', data.getByTestId);
-    setVal('cssLocator', data.cssSelector);
-    setVal('xpathLocator', data.xpath);
+    // Populate Native Locators
+    addRow('getByRole', data.getByRole, 'role');
+    addRow('getByText', data.getByText, 'text');
+    addRow('getByTestId', data.getByTestId, 'testid');
+    addRow('getByLabel', data.getByLabel, 'label');
+    addRow('getByPlaceholder', data.getByPlaceholder, 'placeholder');
+    addRow('getByAltText', data.getByAltText, 'alt');
+
+    // Populate Traditional
+    addRow('css', data.cssSelector, 'css');
+    addRow('xpath', data.xpath, 'xpath');
+
+    // Populate Frameworks
+    if (data.framework) addRow('Framework', data.framework, 'framework');
+    if (data.agGrid) addRow('AG-Grid', data.agGrid, 'aggrid');
+    if (data.nexus) addRow('Nexus', data.nexus, 'nexus');
 
     const best = getBestLocator(data);
-    const heroValue = document.getElementById('heroLocatorValue');
-    const codeSnippet = formatLocator(best);
-
-    let displayValue = best.value;
-    if (best.method === 'getByRole' && displayValue && displayValue.includes('|')) {
-        const parts = displayValue.split('|');
-        displayValue = `${parts[0]} "${parts[1]}"`;
-    }
-
-    heroValue.textContent = displayValue;
+    document.getElementById('heroLocatorValue').textContent = best.value;
 
     updateCodeBlock();
 
     // Reset AI section
     document.getElementById('aiResults').classList.add('hidden');
     document.getElementById('aiResults').innerHTML = '';
+
+
+
+    // Add listeners to new copy buttons
+    document.querySelectorAll('.copy-item-grid').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            copyToClipboard(btn.getAttribute('data-val'));
+        };
+    });
 }
 
 function formatLocator(best) {
@@ -1194,14 +1326,21 @@ function generatePythonCode(best, action, addWait) {
     const act = getActionStr('python', action);
     const esc = (s) => s.replace(/"/g, '\\"');
     let locatorStr = "";
-    if (method === 'locator') locatorStr = `page.locator("${esc(value)}")`;
+
+    // Handle frame context
+    let prefix = "page";
+    if (selectedElement && selectedElement.frame) {
+        prefix = `page.frame_locator("${esc(selectedElement.frame.selector)}")`;
+    }
+
+    if (method === 'locator') locatorStr = `${prefix}.locator("${esc(value)}")`;
     else if (method === 'getByRole') {
         const parts = value.split('|');
-        if (parts.length > 1) locatorStr = `page.get_by_role("${parts[0]}", name="${esc(parts[1])}")`;
-        else locatorStr = `page.get_by_role("${parts[0]}")`;
+        if (parts.length > 1) locatorStr = `${prefix}.get_by_role("${parts[0]}", name="${esc(parts[1])}")`;
+        else locatorStr = `${prefix}.get_by_role("${parts[0]}")`;
     } else {
         const pyMethod = method.replace(/([A-Z])/g, "_$1").toLowerCase();
-        locatorStr = `page.${pyMethod}("${esc(value)}")`;
+        locatorStr = `${prefix}.${pyMethod}("${esc(value)}")`;
     }
 
     if (addWait) return `${locatorStr}.wait_for()\n${locatorStr}${act}`;
@@ -1213,13 +1352,20 @@ function generateJSCode(best, action, addWait) {
     const act = getActionStr('js', action);
     const esc = (s) => s.replace(/'/g, "\\'");
     let locatorStr = "";
-    if (method === 'locator') locatorStr = `page.locator('${esc(value)}')`;
+
+    // Handle frame context
+    let prefix = "page";
+    if (selectedElement && selectedElement.frame) {
+        prefix = `page.frameLocator('${esc(selectedElement.frame.selector)}')`;
+    }
+
+    if (method === 'locator') locatorStr = `${prefix}.locator('${esc(value)}')`;
     else if (method === 'getByRole') {
         const parts = value.split('|');
-        if (parts.length > 1) locatorStr = `page.getByRole('${parts[0]}', { name: '${esc(parts[1])}' })`;
-        else locatorStr = `page.getByRole('${parts[0]}')`;
+        if (parts.length > 1) locatorStr = `${prefix}.getByRole('${parts[0]}', { name: '${esc(parts[1])}' })`;
+        else locatorStr = `${prefix}.getByRole('${parts[0]}')`;
     } else {
-        locatorStr = `page.${method}('${esc(value)}')`;
+        locatorStr = `${prefix}.${method}('${esc(value)}')`;
     }
 
     if (addWait) return `await ${locatorStr}.waitFor();\nawait ${locatorStr}${act};`;
@@ -1318,6 +1464,7 @@ function updateStatus(text) {
 }
 
 // AI Core Logic
+// AI Core Logic
 async function processAIRequest() {
     if (!selectedElement) {
         updateStatus('Select an element first');
@@ -1340,53 +1487,22 @@ async function processAIRequest() {
     aiTrigger.style.pointerEvents = 'none';
 
     try {
-        const recommendations = await callOpenAI(selectedElement, openaiApiKey);
+        if (!window.AIService) throw new Error('AIService not loaded');
+
+        const recommendations = await window.AIService.generateLocators(selectedElement, openaiApiKey);
         renderAIResults(recommendations);
         aiResults.classList.remove('hidden');
         updateStatus('AI locators generated!');
     } catch (e) {
         console.error('AI Processing failed:', e);
-        updateStatus('AI generation failed');
+        updateStatus('AI generation failed: ' + e.message);
     } finally {
         aiTrigger.innerHTML = oldText;
         aiTrigger.style.opacity = '1';
         aiTrigger.style.pointerEvents = 'auto';
     }
 }
-
-async function callOpenAI(data, apiKey) {
-    const prompt = `
-        Analyze this HTML element and suggest 3 high-quality Playwright locators.
-        Element: ${data.outerHTML}
-        Tag: ${data.tag}
-        Current ID: ${data.id}
-        
-        Respond ONLY with a JSON array of objects: 
-        [{"name": "semantic_variable_name", "locator": "page.getByRole(...)", "reason": "Why this is good"}]
-        Focus on stability and best practices.
-    `;
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'system', content: 'You are a Playwright automation expert.' }, { role: 'user', content: prompt }],
-            temperature: 0,
-            response_format: { type: "json_object" }
-        })
-    });
-
-    if (!response.ok) throw new Error('API request failed');
-    const result = await response.json();
-    const content = result.choices[0].message.content;
-    const json = JSON.parse(content);
-    // Support both direct array or wrapped object
-    return Array.isArray(json) ? json : (json.recommendations || json.locators || Object.values(json)[0]);
-}
+// callOpenAI removed as it is now in ai-service.js
 
 function renderAIResults(recommendations) {
     const container = document.getElementById('aiResults');
@@ -1445,4 +1561,6 @@ function renderAIResults(recommendations) {
             }
         };
     });
-}
+} // Correctly close renderAIResults here.
+
+
