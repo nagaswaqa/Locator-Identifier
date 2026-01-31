@@ -133,8 +133,31 @@ function processPastedDOM() {
 
     // Clear and render
     sandbox.innerHTML = html;
+    sandbox.classList.remove('ag-grid-detected'); // Reset
     wrapper.classList.remove('hidden');
-    updateStatus('UI Rendered. Click any element in the preview to inspect.');
+
+    // ag-Grid Detection Logic
+    const isAgGrid = (el) => {
+        if (!el || el.nodeType !== 1) return false;
+        const classes = el.className || "";
+        const role = el.getAttribute('role');
+        const gridId = el.getAttribute('grid-id');
+
+        return (
+            (typeof classes === 'string' && classes.includes('ag-root')) ||
+            (role === 'presentation' && gridId) ||
+            (role === 'grid')
+        );
+    };
+
+    // Check top-level and all elements for ag-Grid signature
+    const hasGrid = Array.from(sandbox.querySelectorAll('*')).some(isAgGrid) || isAgGrid(sandbox.firstElementChild);
+    if (hasGrid) {
+        sandbox.classList.add('ag-grid-detected');
+        updateStatus('ag-Grid snippet detected! Applying grid layout.');
+    } else {
+        updateStatus('UI Rendered. Click any element in the preview to inspect.');
+    }
 
     // Inject Interactivity
     const allElements = sandbox.querySelectorAll('*');
