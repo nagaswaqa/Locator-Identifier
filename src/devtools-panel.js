@@ -103,6 +103,10 @@ function clearLocators() {
     document.getElementById('sandboxWrapper').classList.add('hidden');
     document.getElementById('sandboxContent').innerHTML = '';
 
+    // Clear Paste DOM area too
+    const pasteArea = document.getElementById('domPasteArea');
+    if (pasteArea) pasteArea.value = '';
+
     // Cleanup picker if it was running
     stopPolling();
     chrome.devtools.inspectedWindow.eval('if(window.__pwPickerCleanup) window.__pwPickerCleanup();');
