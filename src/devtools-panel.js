@@ -111,6 +111,16 @@ function clearLocators() {
     updateStatus('Cleared. Ready for new element.');
 }
 
+function getDepth(el, root) {
+    let depth = 0;
+    let curr = el;
+    while (curr && curr !== root) {
+        curr = curr.parentElement;
+        depth++;
+    }
+    return depth;
+}
+
 function processPastedDOM() {
     const html = document.getElementById('domPasteArea').value;
     if (!html.trim()) {
@@ -129,26 +139,57 @@ function processPastedDOM() {
     gridBody.innerHTML = '';
     updateStatus('DOM Captured. Select a row below for deep analysis.');
 
-    const getUIIcon = (t) => {
-        const icons = {
-            'div': '📦', 'header': '📦', 'footer': '📦', 'section': '📦',
-            'span': '📑', 'p': '📑', 'label': '📑', 'button': '🔘', 'a': '🔗',
-            'input': '🔡', 'textarea': '🔡', 'select': '🔡', 'img': '🖼️', 'svg': '🎨',
-            'ul': '📝', 'li': '🔹', 'table': '📊', 'tr': '➖', 'td': '▫️'
+    const getUIRole = (el) => {
+        const tag = el.tagName.toLowerCase();
+        const role = el.getAttribute('role');
+        const type = el.getAttribute('type');
+
+        const roleMap = {
+            'div': { icon: '📦', name: 'Container' },
+            'section': { icon: '📦', name: 'Section' },
+            'header': { icon: '📦', name: 'Header' },
+            'footer': { icon: '📦', name: 'Footer' },
+            'span': { icon: '📑', name: 'Span' },
+            'p': { icon: '📑', name: 'Paragraph' },
+            'label': { icon: '📑', name: 'Label' },
+            'button': { icon: '🔘', name: 'Button' },
+            'a': { icon: '🔗', name: 'Link' },
+            'input': { icon: '🔡', name: type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Input' },
+            'textarea': { icon: '🔡', name: 'Textarea' },
+            'select': { icon: '🔡', name: 'Select' },
+            'img': { icon: '🖼️', name: 'Image' },
+            'svg': { icon: '🎨', name: 'Graphics' },
+            'ul': { icon: '📝', name: 'List' },
+            'li': { icon: '🔹', name: 'Item' },
+            'table': { icon: '📊', name: 'Table' },
+            'h1': { icon: '📑', name: 'Heading 1' },
+            'h2': { icon: '📑', name: 'Heading 2' },
+            'h3': { icon: '📑', name: 'Heading 3' },
+            'h4': { icon: '📑', name: 'Heading 4' },
+            'h5': { icon: '📑', name: 'Heading 5' },
+            'h6': { icon: '📑', name: 'Heading 6' }
         };
-        return icons[t] || '📄';
+
+        if (role) return { icon: '🎭', name: role.charAt(0).toUpperCase() + role.slice(1) };
+        return roleMap[tag] || { icon: '📄', name: tag.charAt(0).toUpperCase() + tag.slice(1) };
     };
 
     const allElements = sandbox.querySelectorAll('*');
-    let rowIdx = 101; // Match screenshot starting ID
+    let rowIdx = 101;
 
     allElements.forEach(el => {
         const tag = el.tagName.toLowerCase();
         if (tag === 'script' || tag === 'style') return;
 
-        // Skip container-only elements to keep it flat and meaningful
-        if (el.children.length > 0 && el.textContent.trim() === "") return;
+        // Smart skip: skip generic containers that just wrap the same content
+        if ((tag === 'div' || tag === 'span') && el.children.length === 1) {
+            const child = el.firstElementChild;
+            if (el.textContent.trim() === child.textContent.trim()) return;
+        }
 
+        const depth = getDepth(el, sandbox);
+        const indent = (depth - 1) * 16;
+        const role = getUIRole(el);
         const text = el.textContent?.trim().substring(0, 50) || '';
         const idAttr = el.id || el.getAttribute('data-testid') || el.getAttribute('data-nexus-id') || '';
         const data = extractElementData(el);
@@ -166,8 +207,10 @@ function processPastedDOM() {
 
         row.innerHTML = `
             <div class="ag-grid-cell" style="width: 50px; color: #64748b; font-weight: 600;">${rowIdx++}</div>
-            <div class="ag-grid-cell" style="flex: 1.2;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: var(--primary);">${tag}</span>
+            <div class="ag-grid-cell" style="flex: 1.2; padding-left: ${indent + 14}px; position: relative;">
+                ${depth > 1 ? `<div style="position: absolute; left: ${indent - 2}px; top: 0; bottom: 0; border-left: 1px solid #e2e8f0;"></div>` : ''}
+                <span style="margin-right: 6px;">${role.icon}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; color: var(--primary);">${role.name}</span>
             </div>
             <div class="ag-grid-cell" style="flex: 2; font-size: 12px; color: #1e293b;">${text ? '"' + text + '"' : (idAttr ? '#' + idAttr : '-')}</div>
             <div class="ag-grid-cell" style="flex: 2; font-family: monospace; font-size: 10px; color: #475569;">${best.method}(${String(best.value || '').substring(0, 20)}...)</div>
